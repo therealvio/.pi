@@ -17,10 +17,26 @@ Use ASD-STE100 (Simplified Technical English) for prose.
 ## Shell Commands
 
 - Use `/usr/bin/cd` instead of `cd` to bypass zoxide alias.
+- In agent bash, `cd` and `/usr/bin/cd` do not persist between calls, and `/usr/bin/cd` never changes the shell's directory. To target another directory,
+ use `git -C <path>`, absolute paths, or `(builtin cd <path> && <cmd>)` in one call.
 
 ## Tooling
 
 - Use ripgrep (command: rg) to perform code searching
+
+## Worktrees
+
+Do not make changes on `main` or `master`. Before the first file change, create a worktree yourself. Do not ask the user to make one.
+
+- Create it with the `worktrunk` tool from the pi-worktrunk extension. The tool runs the `wt` CLI for you: `{"command": "switch", "args": ["--create", "<branch>"]}` runs `wt switch --create <branch>`. Name the branch from the task, for example `fix/parser-timeout`.
+- The tool moves the session into the new worktree and resumes the task there. The sandbox follows the move, so file writes and git commits in the worktree are allowed.
+- To continue work on an existing branch, use `{"command": "switch", "args": ["<branch>"]}`.
+- Do not create or enter a worktree with `git worktree add`, `wt` in bash, or `cd`. Bash does not move the session, so the file tools and the sandbox stay on the old directory.
+- Read-only `wt` commands (`wt list`, `wt step diff`, `wt config show`) are fine in bash. Use the `worktrunk` tool for any command that switches, merges or removes a worktree, so the session follows the change.
+- Do not merge or remove a worktree unless the user asks.
+- For a command's options, add `--help` to `args`. For `wt` config and hooks, load the `worktrunk` skill.
+- If the `worktrunk` tool is missing, stop and tell the user to restart pi. Do not fall back to `wt` in bash.
+- If `remove` fails on uncommitted changes, inspect them with `git -C <worktree> status`. Use `--force` only when the changes are hook copies (for example `node_modules/`) or the user agrees. `--force` leaves a backup at `refs/wt-backup/<branch>`; delete it after the user confirms.
 
 ## Plain language (ISO 24495-1:2023)
 

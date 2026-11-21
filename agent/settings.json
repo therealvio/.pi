@@ -16,6 +16,15 @@
       "skills": [
         "skills/worktrunk"
       ]
+    },
+    {
+      "source": "npm:@adrianapan/pikit@1.1.9",
+      "extensions": [],
+      "skills": [
+        "agent/skills/pi-extension-builder"
+      ],
+      "prompts": [],
+      "themes": []
     }
   ]
 }

@@ -1,9 +1,54 @@
 {
-  "enabled": true,
   "enableWeakerNetworkIsolation": true,
+  "enabled": true,
+  "filesystem": {
+    "allowGitConfig": true,
+    "allowRead": [
+      ".",
+      "~/.agents/skills",
+      "~/.pi/agent"
+    ],
+    "allowWrite": [
+      ".",
+      "/Users/brew/Library/Caches",
+      "/private/tmp",
+      "/private/var/folders",
+      "/tmp",
+      "~/.cache",
+      "~/.gradle",
+      "~/.local/share/direnv",
+      "~/.local/state/mise",
+      "~/.npm",
+      "~/.worktrees",
+      "~/Library/Caches",
+      "~/go/pkg"
+    ],
+    "denyRead": [
+      ".envrc.private",
+      "~/.aws",
+      "~/.gnupg",
+      "~/.ssh",
+      "~/Library/Keychains"
+    ],
+    "denyWrite": [
+      "*.key",
+      "*.pem",
+      "./.pi/sandbox.json",
+      ".env",
+      ".env.*",
+      "/bin",
+      "/sbin",
+      "/usr/bin",
+      "/usr/sbin",
+      "~/.pi/agent/sandbox.json"
+    ]
+  },
   "network": {
-    "allowLocalBinding": true,
     "allowAllUnixSockets": false,
+    "allowLocalBinding": true,
+    "allowMachLookup": [
+      "com.apple.FSEvents"
+    ],
     "allowUnixSockets": [
       "/nix/var/nix/daemon-socket",
       "/private/tmp/claude",
@@ -11,69 +56,24 @@
       "~/Library/Application Support/rex",
       "~/tries"
     ],
-    "allowMachLookup": [
-      "com.apple.FSEvents"
-    ],
     "allowedDomains": [
-      "localhost",
-      "registry.npmjs.org",
-      "*.npmjs.org",
-      "registry.yarnpkg.com",
-      "*.pypi.org",
-      "files.pythonhosted.org",
-      "proxy.golang.org",
-      "sum.golang.org",
-      "storage.googleapis.com",
-      "github.com",
       "*.github.com",
-      "raw.githubusercontent.com",
-      "release-assets.githubusercontent.com",
-      "ghcr.io",
-      "pkg-containers.githubusercontent.com",
+      "*.npmjs.org",
+      "*.pypi.org",
       "*.schemastore.org",
-      "opentelemetry.io"
-    ]
-  },
-  "filesystem": {
-    "denyRead": [
-      ".envrc.private",
-      "~/.ssh",
-      "~/.aws",
-      "~/.gnupg",
-      "~/Library/Keychains"
-    ],
-    "allowRead": [
-      ".",
-      "~/.pi/agent",
-      "~/.agents/skills"
-    ],
-    "allowWrite": [
-      ".",
-      "/tmp",
-      "/private/tmp",
-      "/private/var/folders",
-      "~/.npm",
-      "~/.cache",
-      "~/Library/Caches",
-      "/Users/brew/Library/Caches",
-      "~/.worktrees",
-      "~/go/pkg",
-      "~/.gradle",
-      "~/.local/state/mise",
-      "~/.local/share/direnv"
-    ],
-    "allowGitConfig": true,
-    "denyWrite": [
-      "/bin",
-      "/sbin",
-      "/usr/bin",
-      "/usr/sbin",
-      ".env",
-      ".env.*",
-      "*.pem",
-      "*.key",
-      "./.pi/sandbox.json",
-      "~/.pi/agent/sandbox.json"
+      "files.pythonhosted.org",
+      "ghcr.io",
+      "github.com",
+      "localhost",
+      "opentelemetry.io",
+      "pkg-containers.githubusercontent.com",
+      "proxy.golang.org",
+      "raw.githubusercontent.com",
+      "registry.npmjs.org",
+      "registry.yarnpkg.com",
+      "release-assets.githubusercontent.com",
+      "storage.googleapis.com",
+      "sum.golang.org"
     ]
   }
 }

@@ -19,7 +19,9 @@
     },
     {
       "source": "npm:@adrianapan/pikit@1.1.9",
-      "extensions": [],
+      "extensions": [
+        "agent/extensions/plan-mode/index.ts"
+      ],
       "skills": [
         "agent/skills/pi-extension-builder"
       ],

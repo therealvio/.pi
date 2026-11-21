@@ -65,7 +65,7 @@ install_file() {
 	cp "$src" "$dest"
 }
 
-tmp=$(mktemp -d)
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/pi-setup.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT
 
 while IFS= read -r path; do

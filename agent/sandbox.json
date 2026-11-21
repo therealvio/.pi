@@ -3,14 +3,34 @@
   "enableWeakerNetworkIsolation": true,
   "network": {
     "allowLocalBinding": true,
+    "allowAllUnixSockets": false,
+    "allowUnixSockets": [
+      "/nix/var/nix/daemon-socket",
+      "/private/tmp/claude",
+      "/private/var/run/nix-daemon.socket",
+      "~/Library/Application Support/rex",
+      "~/tries"
+    ],
+    "allowMachLookup": [
+      "com.apple.FSEvents"
+    ],
     "allowedDomains": [
+      "localhost",
       "registry.npmjs.org",
+      "*.npmjs.org",
+      "registry.yarnpkg.com",
+      "*.pypi.org",
+      "files.pythonhosted.org",
       "proxy.golang.org",
       "sum.golang.org",
       "storage.googleapis.com",
       "github.com",
-      "api.github.com",
+      "*.github.com",
       "raw.githubusercontent.com",
+      "release-assets.githubusercontent.com",
+      "ghcr.io",
+      "pkg-containers.githubusercontent.com",
+      "*.schemastore.org",
       "opentelemetry.io"
     ]
   },
@@ -18,7 +38,9 @@
     "denyRead": [
       ".envrc.private",
       "~/.ssh",
-      "~/.aws"
+      "~/.aws",
+      "~/.gnupg",
+      "~/Library/Keychains"
     ],
     "allowRead": [
       ".",
@@ -42,6 +64,10 @@
     ],
     "allowGitConfig": true,
     "denyWrite": [
+      "/bin",
+      "/sbin",
+      "/usr/bin",
+      "/usr/sbin",
       ".env",
       ".env.*",
       "*.pem",

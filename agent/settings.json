@@ -1,35 +1,19 @@
 {
-  "lastChangelogVersion": "1.6.0",
-  "defaultProvider": "anthropic",
-  "defaultModel": "claude-opus-5-5",
   "compaction": {
     "modelOverrides": {
-      "anthropic/claude-opus-5-5": { "reserveTokens": 500000 },
-      "anthropic/claude-sonnet-5-5": { "reserveTokens": 500000 }
+      "anthropic/claude-opus-5-5": {
+        "reserveTokens": 500000
+      },
+      "anthropic/claude-sonnet-5-5": {
+        "reserveTokens": 500000
+      }
     }
   },
+  "defaultModel": "claude-opus-5-5",
+  "defaultProvider": "anthropic",
+  "lastChangelogVersion": "1.6.0",
   "packages": [
-    "git:github.com/therealvio/jabroni-skills",
-    "npm:pi-worktrunk",
     {
-      "source": "git:github.com/max-sixty/worktrunk@v0.82.0",
-      "skills": [
-        "skills/worktrunk"
-      ]
-    },
-    {
-      "source": "npm:@adrianapan/pikit@1.1.9",
-      "extensions": [
-        "agent/extensions/plan-mode/index.ts"
-      ],
-      "skills": [
-        "agent/skills/pi-extension-builder"
-      ],
-      "prompts": [],
-      "themes": []
-    },
-    {
-      "source": "git:github.com/mattpocock/skills@v1.3.2",
       "skills": [
         "skills/engineering/diagnosing-bugs",
         "skills/engineering/grill-with-docs",
@@ -38,8 +22,28 @@
         "skills/engineering/tdd",
         "skills/productivity/grill-me",
         "skills/productivity/teach"
-      ]
-    }
+      ],
+      "source": "git:github.com/mattpocock/skills@v1.3.2"
+    },
+    {
+      "skills": [
+        "skills/worktrunk"
+      ],
+      "source": "git:github.com/max-sixty/worktrunk@v0.82.0"
+    },
+    "git:github.com/therealvio/jabroni-skills",
+    {
+      "extensions": [
+        "agent/extensions/plan-mode/index.ts"
+      ],
+      "prompts": [],
+      "skills": [
+        "agent/skills/pi-extension-builder"
+      ],
+      "source": "npm:@adrianapan/pikit@1.1.9",
+      "themes": []
+    },
+    "npm:pi-worktrunk"
   ],
   "skills": [
     "-~/.agents/skills/diagnosing-bugs",

@@ -21,4 +21,6 @@ pi may need it's own repo, see: https://github.com/jay-aye-see-kay/.pi for inspi
 - Install mattpocock skills: https://github.com/mattpocock/skills
 - `npx skills@latest add mattpocock/skills -g pi`
 
-#### jabroni-skills
+### extensions
+
+- `rtk init -g --agent pi`

@@ -7,7 +7,10 @@
     "npm:pi-worktrunk@0.13.2",
     {
       "source": "git:github.com/max-sixty/worktrunk@v0.82.0",
-      "skills": ["skills/worktrunk"]
-    }
+      "skills": [
+        "skills/worktrunk"
+      ]
+    },
+    "npm:pi-readcache"
   ]
 }

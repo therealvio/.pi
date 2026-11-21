@@ -3,6 +3,10 @@
   "defaultProvider": "anthropic",
   "defaultModel": "claude-opus-5-5",
   "packages": [
-    "git:github.com/therealvio/jabroni-skills"
+    "git:github.com/therealvio/jabroni-skills",
+    {
+      "source": "git:github.com/max-sixty/worktrunk@v0.82.0",
+      "skills": ["skills/worktrunk"]
+    }
   ]
 }

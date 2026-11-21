@@ -2,7 +2,6 @@
 
 ## workflow shit
 
-- [ ] Claude uses "!" as a prefix for running shell commands, how does one do this on pi?
 - [ ] sandbox mode - this is gonna be chunky.
 
 ## pi setup

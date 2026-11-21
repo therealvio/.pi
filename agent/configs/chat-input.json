@@ -1,0 +1,16 @@
+{
+  "borderColor": "border",
+  "boxedView": false,
+  "chatModeBorderColor": "chatModeBorder",
+  "chatModePrefix": "»",
+  "chatModePrefixColor": "chatModeBorder",
+  "companion": {
+    "color": "accent",
+    "enabled": false
+  },
+  "planModeBorderColor": "customMessageLabel",
+  "planModePrefix": "⏸",
+  "planModePrefixColor": "customMessageLabel",
+  "prefix": "❯",
+  "prefixColor": "accent"
+}

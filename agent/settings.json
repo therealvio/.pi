@@ -34,6 +34,7 @@
     "git:github.com/therealvio/jabroni-skills",
     {
       "extensions": [
+        "agent/extensions/chat-input/index.ts",
         "agent/extensions/plan-mode/index.ts"
       ],
       "prompts": [],

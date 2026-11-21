@@ -2,6 +2,12 @@
   "lastChangelogVersion": "1.6.0",
   "defaultProvider": "anthropic",
   "defaultModel": "claude-opus-5-5",
+  "compaction": {
+    "modelOverrides": {
+      "anthropic/claude-opus-5-5": { "reserveTokens": 500000 },
+      "anthropic/claude-sonnet-5-5": { "reserveTokens": 500000 }
+    }
+  },
   "packages": [
     "git:github.com/therealvio/jabroni-skills",
     "npm:pi-worktrunk",

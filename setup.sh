@@ -117,11 +117,18 @@ fi
 
 # Pi loads every extensions/*.ts and extensions/*/index.ts, so leftovers from
 # an older layout load beside the repo's copies. Installer-owned files are
-# expected.
+# expected. Files that git ignores are skipped, for example .DS_Store when
+# your global git excludes file lists it. Each path is checked as
+# agent/<path>, so the repo's .gitignore applies too. check-ignore exits 1 when it matches
+# nothing, hence `|| true`.
 if [[ -d "$DEST/extensions" ]]; then
 	tracked=$(git -C "$REPO" ls-files agent/extensions | sed 's#^agent/##'; echo "extensions/rtk.ts")
 	stray=$(cd "$DEST" && find extensions -type f -not -path '*/node_modules/*' | sort |
 		while IFS= read -r f; do grep -qxF "$f" <<<"$tracked" || echo "$f"; done)
+	if [[ -n "$stray" ]]; then
+		ignored=$(sed 's#^#agent/#' <<<"$stray" | git -C "$REPO" check-ignore --no-index --stdin | sed 's#^agent/##' || true)
+		stray=$(grep -vxF -f <(printf '%s\n' "$ignored") <<<"$stray" || true)
+	fi
 	if [[ -n "$stray" ]]; then
 		echo
 		echo "Not in repo, still loaded by pi (remove if unwanted):"

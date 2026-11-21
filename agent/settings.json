@@ -4,7 +4,7 @@
   "defaultModel": "claude-opus-5-5",
   "packages": [
     "git:github.com/therealvio/jabroni-skills",
-    "npm:pi-worktrunk@0.13.2",
+    "npm:pi-worktrunk",
     {
       "source": "git:github.com/max-sixty/worktrunk@v0.82.0",
       "skills": [

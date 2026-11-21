@@ -12,13 +12,14 @@
 # - Files are never deleted. Live extension files that the repo does not
 #   track are listed, because pi loads them too.
 # - Extensions with a package-lock.json get `npm ci` in the agent dir.
+# - `rtk init` installs rtk's own extension, if rtk is on PATH.
 #
 # Usage: ./setup.sh [--dry-run]
 
 set -euo pipefail
 
 usage() {
-	sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 DRY_RUN=0
@@ -33,6 +34,12 @@ done
 for cmd in git jq npm; do
 	command -v "$cmd" >/dev/null 2>&1 || { echo "setup.sh needs $cmd on PATH." >&2; exit 1; }
 done
+
+# rtk installs its own pi extension (below), and pi-worktrunk calls wt at
+# runtime. Without them those features are off, so warn but carry on.
+HAVE_RTK=1
+command -v rtk >/dev/null 2>&1 || { HAVE_RTK=0; echo "warning: rtk is not on PATH; skipping its pi extension." >&2; }
+command -v wt >/dev/null 2>&1 || echo "warning: wt is not on PATH; the pi-worktrunk tool will not work." >&2
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 SRC="$REPO/agent"
@@ -96,10 +103,23 @@ for dir in ${npm_dirs[@]+"${npm_dirs[@]}"}; do
 	(cd "$DEST/$dir" && npm ci --ignore-scripts --no-audit --no-fund --loglevel=error)
 done
 
+# rtk owns extensions/rtk.ts, so the extension always matches the installed
+# binary. rtk init writes to ~/.pi/agent and ignores PI_CODING_AGENT_DIR, so
+# skip it when that is set (for example in a test run).
+if [[ $HAVE_RTK -eq 1 ]]; then
+	if [[ -n "${PI_CODING_AGENT_DIR:-}" ]]; then
+		echo "skip    rtk init (PI_CODING_AGENT_DIR is set)"
+	else
+		echo "rtk init --agent pi"
+		[[ $DRY_RUN -eq 1 ]] || rtk init -g --agent pi </dev/null >/dev/null
+	fi
+fi
+
 # Pi loads every extensions/*.ts and extensions/*/index.ts, so leftovers from
-# an older layout load beside the repo's copies.
+# an older layout load beside the repo's copies. Installer-owned files are
+# expected.
 if [[ -d "$DEST/extensions" ]]; then
-	tracked=$(git -C "$REPO" ls-files agent/extensions | sed 's#^agent/##')
+	tracked=$(git -C "$REPO" ls-files agent/extensions | sed 's#^agent/##'; echo "extensions/rtk.ts")
 	stray=$(cd "$DEST" && find extensions -type f -not -path '*/node_modules/*' | sort |
 		while IFS= read -r f; do grep -qxF "$f" <<<"$tracked" || echo "$f"; done)
 	if [[ -n "$stray" ]]; then

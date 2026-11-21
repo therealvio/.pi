@@ -10,13 +10,8 @@ TODO: move these into dotfiles/prep-macbook when you're ready to use pi seriousl
 
 pi may need it's own repo, see: https://github.com/jay-aye-see-kay/.pi for inspiration.
 
-### skills
+### install
 
-#### worktrunk
+Run `./setup.sh` (or `./setup.sh --dry-run` first). It copies `agent/` into `~/.pi/agent`. Packages, skills and extensions are declared in the repo, and setup.sh runs `rtk init -g --agent pi` for rtk's extension, so there are no manual install steps.
 
-- wt-switch-create isn't supported by pi, use this extension: `pi install npm:pi-worktrunk`
-- `wt config plugins pi install`
-
-### extensions
-
-- `rtk init -g --agent pi`
+Install these tools first, setup.sh does not: `rtk` (>= 0.23) and `wt` (worktrunk, used by pi-worktrunk).

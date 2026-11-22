@@ -1,40 +1,29 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-const VERBS = [
-	"Grabbing the D",
-	"LFGing",
-	"Shit-posting",
-	"Rage-quitting",
-	"Doomscrolling",
-	"Yoloing",
-	"Flexing",
-	"Mogging",
-	"Simping",
-	"Circling-back",
-	"Circle-jerking",
-	"Looksmaxxing",
-	"Chad-posting",
-	"AI-slopping",
-	"Rage-baiting",
-	"Entering my main character era",
-	"Debugging this Ohio-level code",
-	"Glazing",
-	"Mewing",
-	"Brainrotting",
-	"Aura-farming",
-	"Vibe-checking",
-	"Tweaking",
-	"Gaslighting",
-	"Locking-in",
-	"Popping-off",
-	"Crashing out",
-	"Geeking",
-];
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // Replaces pi's default "Working" loader text with a random verb on each turn.
+//
+// Config (~/.pi/agent/configs/spinner-verbs.json):
+//   { "verbs": ["Grabbing the D", "LFGing"] }
+// No file or no verbs = pi's default text. Edit the file, then /reload.
+
+function readVerbs(): string[] {
+	try {
+		const config = JSON.parse(readFileSync(join(getAgentDir(), "configs", "spinner-verbs.json"), "utf8"));
+		const verbs = config?.verbs;
+		return Array.isArray(verbs) ? verbs.filter((v): v is string => typeof v === "string" && v.trim() !== "") : [];
+	} catch {
+		return [];
+	}
+}
+
 export default function (pi: ExtensionAPI) {
+	const verbs = readVerbs();
+	if (verbs.length === 0) return;
+
 	pi.on("turn_start", (_event, ctx) => {
-		const verb = VERBS[Math.floor(Math.random() * VERBS.length)];
+		const verb = verbs[Math.floor(Math.random() * verbs.length)];
 		ctx.ui.setWorkingMessage(`${verb}…`);
 	});
 }

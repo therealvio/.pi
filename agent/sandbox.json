@@ -20,6 +20,7 @@
       "~/.local/state/mise",
       "~/.npm",
       "~/.worktrees",
+      "~/Library/Application Support/rtk/tee",
       "~/Library/Caches",
       "~/go/pkg"
     ],

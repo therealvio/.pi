@@ -11,6 +11,8 @@ This repo holds the user's config for [pi](https://pi.dev), the earendil-works c
 | `agent/AGENTS.md` | Global instructions for every pi session. Not about this repo. |
 | `agent/settings.json` | Model, compaction, packages, skill filters. |
 | `agent/sandbox.json` | Policy for the sandbox extension (sandbox-runtime). |
+| `agent/configs/<name>.json` | Config for one extension, read by that extension. |
+| `agent/keybindings.json` | Key bindings, including custom `ext.<name>.<action>` ids. |
 | `agent/extensions/<name>/index.ts` | Local extensions, one folder each. |
 | `setup.sh` | Installs `agent/` into `~/.pi/agent`. |
 
@@ -28,6 +30,7 @@ Do not write to `~/.pi/agent` yourself. The user promotes changes with `setup.sh
 
 - **Prefer packages to copies.** Add third-party skills and extensions as entries in `settings.json` `packages`, pinned to a tag, version or commit, with filters that load only what is needed. Copy code into `agent/extensions/` only when it is ours or adapted.
 - **Let installers own their files.** If a tool installs its own pi extension (for example `rtk init -g --agent pi`), run the installer from `setup.sh` and do not commit the file.
+- **Extension config goes in `agent/configs/<name>.json`**, not in `settings.json` or as constants in the code, for any value the user may want to change (models, lists, limits, toggles). This applies to our own extensions and to adapted copies. Read it from `join(getAgentDir(), "configs", "<name>.json")`, as `session-title` and `subagents` do. When the file is missing, use a safe default or turn the feature off. Put each key binding in `agent/keybindings.json` under an `ext.<name>.<action>` id, and have the extension read it, as `snippets` does.
 - **One folder per extension**, with `index.ts` as the entry point. An extension with npm dependencies keeps its own `package.json` and `package-lock.json`; `setup.sh` runs `npm ci` for it.
 - **Sort JSON.** Keep object keys and string lists in `settings.json` and `sandbox.json` in alphabetical order (`jq -S`).
 - **No secrets.** `auth.json`, `sessions/`, `install/` and similar live pi state stay out of the repo.

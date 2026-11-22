@@ -90,6 +90,19 @@ while IFS= read -r path; do
 	fi
 done < <(git -C "$REPO" ls-files agent)
 
+# The secrets extension reads configs/.env.private for secrets that stay out of
+# git. Create an empty one so it is ready to edit. Never touch an existing file:
+# it holds real secrets. Mode 600, because only the user should read it.
+private_env="$DEST/configs/.env.private"
+if [[ ! -e "$private_env" ]]; then
+	echo "create  configs/.env.private (empty)"
+	created=$((created + 1))
+	if [[ $DRY_RUN -eq 0 ]]; then
+		mkdir -p "$(dirname "$private_env")"
+		(umask 077 && : >"$private_env")
+	fi
+fi
+
 # `npm ci` replaces node_modules, so run it only when deps are missing or the
 # lockfile changed in this run.
 for dir in ${npm_dirs[@]+"${npm_dirs[@]}"}; do

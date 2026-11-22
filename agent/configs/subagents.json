@@ -1,4 +1,5 @@
 {
+  "keepDays": 30,
   "models": {
     "anthropic/claude-haiku-5-5": "fast and cheap, the default: search, lookups, summaries, running tests",
     "anthropic/claude-sonnet-5-5": "stronger, still cheaper than the main model: reviews, tricky debugging, multi-step edits"

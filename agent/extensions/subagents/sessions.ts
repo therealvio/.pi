@@ -1,7 +1,44 @@
 import type { ExtensionCommandContext, SessionInfo } from "@earendil-works/pi-coding-agent";
 import { SessionManager, SessionSelectorComponent } from "@earendil-works/pi-coding-agent";
-import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, rmdirSync, statSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+
+/**
+ * Delete subagent session files not changed for `keepDays` days, then remove
+ * parent subdirs left empty. Uses mtime, so a resumed session counts as new
+ * and a running subagent is never touched. Best-effort: a file that cannot
+ * be deleted stays. Returns the number of files deleted.
+ */
+export function pruneSessions(sessionDir: string, keepDays: number): number {
+  const cutoff = Date.now() - keepDays * 86_400_000;
+  let deleted = 0;
+  for (const dir of sessionSubdirs(sessionDir)) {
+    let files: string[];
+    try {
+      files = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      if (!f.endsWith(".jsonl")) continue;
+      const path = join(dir, f);
+      try {
+        if (statSync(path).mtimeMs < cutoff) {
+          unlinkSync(path);
+          deleted += 1;
+        }
+      } catch {
+        // keep it; try again next start
+      }
+    }
+    try {
+      if (readdirSync(dir).length === 0) rmdirSync(dir);
+    } catch {
+      // not empty or not removable
+    }
+  }
+  return deleted;
+}
 
 /**
  * Subagent sessions live in per-parent subdirs: `subagent-sessions/<parent-id>/`.

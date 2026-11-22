@@ -6,9 +6,9 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { SessionTotals, SubStats } from "./types";
-import { readSubagentModels } from "./config";
+import { readKeepDays, readSubagentModels } from "./config";
 import { BLOCKED_RE, buildPrompt, runSubagent, SESSION_ID_RE } from "./runner";
-import { findSessionDir, openSubagentPicker } from "./sessions";
+import { findSessionDir, openSubagentPicker, pruneSessions } from "./sessions";
 import {
   clip,
   failure,
@@ -139,13 +139,20 @@ export default function (pi: ExtensionAPI) {
     setEnabled(enabled, ctx, false);
   };
 
+  const sessionDir = join(getAgentDir(), "subagent-sessions");
+  // Prune once per pi process, not on every new/resumed/forked session.
+  let pruned = false;
+
   pi.on("session_start", (_event, ctx) => {
     totals = { count: 0, cost: 0, turns: 0 };
     restoreState(ctx);
+    const keepDays = readKeepDays();
+    if (!pruned && keepDays) {
+      pruned = true;
+      pruneSessions(sessionDir, keepDays);
+    }
   });
   pi.on("session_tree", (_event, ctx) => restoreState(ctx));
-
-  const sessionDir = join(getAgentDir(), "subagent-sessions");
 
   pi.registerCommand("subagent", {
     description: "Enable, disable, or show the subagent tool",

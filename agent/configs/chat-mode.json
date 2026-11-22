@@ -1,4 +1,16 @@
 {
+  "allowedTools": [
+    "read",
+    "bash",
+    "grep",
+    "find",
+    "ls",
+    "web_search",
+    "web_fetch",
+    "artifact",
+    "mcp__context7__resolve_library_id",
+    "mcp__context7__query_docs"
+  ],
   "bashPatterns": {
     "safePatterns": [
       "^\\s*(rtk\\s+)?cat\\b",

@@ -23,6 +23,7 @@ Use ASD-STE100 (Simplified Technical English) for prose.
 ## Tooling
 
 - Use ripgrep (command: rg) to perform code searching
+- For library and API docs, use context7 first. For anything else on the web, use `web_search`, then `web_fetch` to read a result.
 
 ## Diagrams
 

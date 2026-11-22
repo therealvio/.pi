@@ -3,7 +3,8 @@
  *
  * Uses @anthropic-ai/sandbox-runtime (sandbox-exec on macOS, bubblewrap on Linux)
  * to restrict bash. pi's in-process read/write/edit tools bypass the OS sandbox,
- * so they are gated separately in the `tool_call` hook.
+ * so they are gated separately in the `tool_call` hook. pikit's `artifact` tool
+ * also reads a file in-process when it gets `path`, so it is gated as a read.
  *
  * Two modes (config `mode`, default "sandbox"; switch at runtime with
  * `/sandbox enable` or `/sandbox prompt`):
@@ -649,8 +650,10 @@ export default function (pi: ExtensionAPI) {
 
 	// ── tool_call: fs gates (sandbox) / confirm-everything (prompt) ─────────────
 	pi.on("tool_call", async (event, ctx) => {
+		const artifactPath = artifactReadPath(event);
 		if (mode === "prompt") {
 			if (isToolCallEventType("read", event)) return confirmOnce(ctx, "read", event.input.path);
+			if (artifactPath) return confirmOnce(ctx, "read", artifactPath);
 			if (isToolCallEventType("write", event) || isToolCallEventType("edit", event)) return confirmOnce(ctx, "write", (event.input as { path: string }).path);
 			if (isToolCallEventType("bash", event)) return confirmOnce(ctx, "run", event.input.command);
 			return;
@@ -659,6 +662,12 @@ export default function (pi: ExtensionAPI) {
 
 		if (isToolCallEventType("read", event)) {
 			const path = canonicalizePath(event.input.path);
+			if (matchesPattern(path, effAllowRead())) return;
+			return gateTool(ctx, "read", path);
+		}
+
+		if (artifactPath) {
+			const path = canonicalizePath(artifactPath);
 			if (matchesPattern(path, effAllowRead())) return;
 			return gateTool(ctx, "read", path);
 		}
@@ -673,6 +682,17 @@ export default function (pi: ExtensionAPI) {
 			return gateTool(ctx, "write", path);
 		}
 	});
+
+	/**
+	 * File that pikit's `artifact` tool will read, or undefined if the call reads none.
+	 * The tool joins `path` onto process.cwd() even when `path` is absolute, so this
+	 * does the same. Otherwise the gate would check a different file than the tool reads.
+	 */
+	function artifactReadPath(event: { toolName: string; input: unknown }): string | undefined {
+		if (event.toolName !== "artifact") return undefined;
+		const path = (event.input as { path?: unknown }).path;
+		return typeof path === "string" && path !== "" ? join(process.cwd(), path) : undefined;
+	}
 
 	/** Prompt for an in-process read/write, serialised with all other grant prompts. */
 	async function gateTool(ctx: ExtensionContext, kind: "read" | "write", path: string): Promise<{ block: true; reason: string } | undefined> {

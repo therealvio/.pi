@@ -16,7 +16,21 @@ import { Type } from "typebox";
  * (HTTP 202) and plain agents with results, so USER_AGENT names this tool.
  * If DuckDuckGo changes its result markup, web_search returns no results; the
  * class names it parses are result__a, result__snippet and result--ad.
+ *
+ * Context7 first: in each user prompt, the first web_search is blocked until
+ * a context7 tool has run, because agents skip the written rule. The block
+ * tells the agent to try context7, or to call web_search again when the
+ * question is not about a library or context7 has no match. The gate is off
+ * when no context7 tool is active, for example when the MCP server is down.
  */
+const CONTEXT7_PREFIX = "mcp__context7__";
+const CONTEXT7_FIRST =
+	"Check context7 first. For a library, framework, SDK, API or CLI tool " +
+	"(docs, config, flags, versions, examples), call " +
+	"mcp__context7__resolve_library_id, then mcp__context7__query_docs. If the " +
+	"question is not about one of those, or context7 has no match, call " +
+	"web_search again with the same query; it will not be blocked again for " +
+	"this prompt.";
 
 const USER_AGENT = "pi-web/1.0";
 const SEARCH_URL = "https://html.duckduckgo.com/html/";
@@ -106,11 +120,29 @@ function errorResult(message: string) {
 }
 
 export default function (pi: ExtensionAPI) {
+	// Reset for each user prompt.
+	let context7Used = false;
+	let nudged = false;
+	pi.on("before_agent_start", () => {
+		context7Used = false;
+		nudged = false;
+	});
+	pi.on("tool_call", (event) => {
+		if (event.toolName.startsWith(CONTEXT7_PREFIX)) {
+			context7Used = true;
+			return;
+		}
+		if (event.toolName !== "web_search" || context7Used || nudged) return;
+		if (!pi.getActiveTools().some((t) => t.startsWith(CONTEXT7_PREFIX))) return;
+		nudged = true;
+		return { block: true, reason: CONTEXT7_FIRST };
+	});
+
 	pi.registerTool({
 		name: "web_search",
 		label: "Web search",
 		description:
-			"Search the web (DuckDuckGo). Returns title, URL and snippet for each result. Read a result with web_fetch. For library and API docs, try context7 first.",
+			"Search the web (DuckDuckGo). Returns title, URL and snippet for each result. Read a result with web_fetch. For a library, framework, SDK, API or CLI tool, call context7 first; the first web_search in a prompt is blocked until context7 has run.",
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
 			limit: Type.Optional(Type.Number({ description: `Results to return (default ${DEFAULT_RESULTS}, max ${MAX_RESULTS})` })),

@@ -37,7 +37,10 @@
         "agent/extensions/chat-input/index.ts",
         "agent/extensions/plan-mode/index.ts"
       ],
-      "prompts": [],
+      "prompts": [
+        "agent/prompts/handoff.md",
+        "agent/prompts/pickup.md"
+      ],
       "skills": [
         "agent/skills/pi-extension-builder"
       ],

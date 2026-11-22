@@ -24,6 +24,10 @@ Use ASD-STE100 (Simplified Technical English) for prose.
 
 - Use ripgrep (command: rg) to perform code searching
 
+## Diagrams
+
+To draw a diagram, put a mermaid block in a markdown artifact (`artifact` tool). Use top-to-bottom (`flowchart TD`). Do not add a config or colours: the `artifact-style` extension adds the hand-drawn look and the palette.
+
 ## Worktrees
 
 Do not make changes on `main` or `master`. Before the first file change, create a worktree yourself. Do not ask the user to make one.

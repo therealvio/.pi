@@ -54,7 +54,10 @@
       "^\\s*(rtk\\s+)?(npx\\s+)?tsc\\b.*--noEmit",
       "^\\s*(rtk\\s+)?npm\\s+(list|ls|view|info|outdated|audit)",
       "^\\s*(rtk\\s+)?yarn\\s+(list|info|why|audit)",
-      "^\\s*rtk\\s+read\\b"
+      "^\\s*rtk\\s+read\\b",
+      "^\\s*(rtk\\s+)?gh-axi\\s+api\\s+(GET\\s+)?[\"']?/(?!.*\\s(-X|--method|-f|-F|--field|--raw-field|--input)\\b)(?!.*\\s(POST|PUT|PATCH|DELETE)\\b)",
+      "^\\s*(rtk\\s+)?gh-axi\\s+(issue|pr|release|repo|run)\\s+(diff|list|view)\\b",
+      "^\\s*(rtk\\s+)?gh-axi\\s+search\\b"
     ]
   },
   "shortcuts": {

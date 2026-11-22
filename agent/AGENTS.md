@@ -24,6 +24,7 @@ Use ASD-STE100 (Simplified Technical English) for prose.
 
 - Use ripgrep (command: rg) to perform code searching
 - For library and API docs, use context7 first. For anything else on the web, use `web_search`, then `web_fetch` to read a result.
+- For GitHub repos, files and API data, use `gh-axi`, not `curl` or `web_fetch`. Read a file with `gh-axi api /repos/<owner>/<repo>/contents/<path> --jq '.content | @base64d' --full`. Get the latest commit for a path with `gh-axi api "/repos/<owner>/<repo>/commits?path=<path>&per_page=1" --jq '.[0].sha'`.
 
 ## Diagrams
 

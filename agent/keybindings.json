@@ -1,4 +1,8 @@
 {
   "$schema": "https://pi.dev/schemas/keybindings.schema.json",
-  "app.thinking.cycle": "ctrl+shift+t"
+  "app.thinking.cycle": "ctrl+shift+t",
+  "ext.snippets.expand": "ctrl+j",
+  "tui.input.newLine": [
+    "shift+enter"
+  ]
 }

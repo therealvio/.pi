@@ -1,2 +1,4 @@
 node_modules/
+# env-loader secrets. They must stay out of this public repo.
+agent/configs/.env
 .pi/sandbox.json

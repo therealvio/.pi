@@ -37,8 +37,7 @@
         "agent/extensions/artifacts/index.ts",
         "agent/extensions/chat-input/index.ts",
         "agent/extensions/chat-mode/index.ts",
-        "agent/extensions/env-loader/index.ts",
-        "agent/extensions/plan-mode/index.ts"
+        "agent/extensions/env-loader/index.ts"
       ],
       "prompts": [
         "agent/prompts/handoff.md",

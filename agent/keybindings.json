@@ -2,6 +2,7 @@
   "$schema": "https://pi.dev/schemas/keybindings.schema.json",
   "app.thinking.cycle": "ctrl+shift+t",
   "ext.snippets.expand": "ctrl+j",
+  "ext.stash.swap": "alt+shift+up",
   "tui.input.newLine": [
     "shift+enter"
   ]

@@ -1,0 +1,9 @@
+{
+  "shortcuts": {
+    "toggleMode": "alt+shift+tab"
+  },
+  "ui": {
+    "hideNotify": true,
+    "hideWidget": true
+  }
+}

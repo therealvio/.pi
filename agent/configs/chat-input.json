@@ -1,9 +1,9 @@
 {
   "borderColor": "border",
   "boxedView": false,
-  "chatModeBorderColor": "chatModeBorder",
+  "chatModeBorderColor": "#81a2be",
   "chatModePrefix": "»",
-  "chatModePrefixColor": "chatModeBorder",
+  "chatModePrefixColor": "#81a2be",
   "companion": {
     "color": "accent",
     "enabled": false

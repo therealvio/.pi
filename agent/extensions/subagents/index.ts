@@ -38,10 +38,12 @@ import {
  * enters the main agent's context. Live telemetry (turns / tools / cost) is
  * shown to the human via a TUI widget, not fed to the model.
  *
- * Configuration lives in configs/subagents.json (see ./config) — a map of
- * model id to description, whose first entry is the default. If the key is absent the tool
- * is NOT registered (disabled silently, no fallback). If present but malformed,
- * the tool is disabled and the user is warned at session start.
+ * Config: ~/.pi/agent/configs/subagents.json (see ./config).
+ *   { "keepDays": 30, "models": { "<provider/model>": "<when to use it>" } }
+ * `models` maps model id to description; the first entry is the default. If
+ * it is absent the tool is NOT registered (disabled silently, no fallback). If
+ * present but malformed, the tool is disabled and the user is warned at
+ * session start. `keepDays` deletes sessions older than that at startup.
  *
  * Recursion: subagents are spawned with `PI_SUBAGENT=1`, which causes this
  * extension to return early — the subagent tool is never registered inside a

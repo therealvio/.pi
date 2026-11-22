@@ -4,6 +4,9 @@
 // Execute menu's follow-up message uses deliverAs: "followUp" (see showPlanMenu).
 // Drop this copy and load pikit's again once a pikit release has that fix.
 // @src https://github.com/adrianapan/pikit/tree/main/agent/extensions/plan-mode
+//
+// Config: ~/.pi/agent/configs/plan-mode.json (allowed tools, safe bash
+// patterns, shortcut). See README.md and plan-mode.example.json for keys.
 
 import type {
   ExtensionAPI,

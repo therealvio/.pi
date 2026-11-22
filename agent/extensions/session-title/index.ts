@@ -6,8 +6,8 @@
  * get a useful label.
  *
  *   - First prompt: generate a title from it right away (no waiting for the turn).
- *   - After the 3rd prompt's turn settles: ask whether the conversation's goal
- *     has drifted; keep the title or replace it.
+ *   - After the Nth prompt's turn settles (retitleAt, default 3): ask whether
+ *     the conversation's goal has drifted; keep the title or replace it.
  *
  * A name set any other way (/name, --name, other extensions) is never touched:
  * auto titles are recorded as custom entries, and if the current name differs
@@ -17,8 +17,8 @@
  * any current name (including manual ones).
  *
  * Config (~/.pi/agent/configs/session-title.json):
- *   { "model": "anthropic/claude-haiku-5-5" }
- * No file or no model = disabled. Skipped when there's no UI (print/json mode, subagents).
+ *   { "model": "anthropic/claude-haiku-5-5", "retitleAt": 3 }
+ * No file or no model = disabled. retitleAt 0 turns the drift check off. Skipped when there's no UI (print/json mode, subagents).
  *
  * @src https://github.com/jay-aye-see-kay/.pi/blob/6564d06/agent/extensions/session-title.ts
  */
@@ -28,7 +28,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ENTRY_TYPE = "session-title";
-const RETITLE_AT_USER_MESSAGE = 3;
+const DEFAULT_RETITLE_AT = 3;
 
 const STYLE = `Title style: 3-6 words, under 50 characters, sentence case, plain text. No quotes, no trailing punctuation, no prefixes like "Title:".`;
 
@@ -49,14 +49,17 @@ Below is the conversation so far. Write a short title describing its main task o
 ${STYLE}
 Reply with the title only.`;
 
-function readModelSetting(): string | undefined {
+function readSettings(): { model?: string; retitleAt: number } {
+  let config: { model?: unknown; retitleAt?: unknown } = {};
   try {
-    const config = JSON.parse(readFileSync(join(getAgentDir(), "configs", "session-title.json"), "utf8"));
-    const model = config?.model;
-    return typeof model === "string" && model.includes("/") ? model : undefined;
+    config = JSON.parse(readFileSync(join(getAgentDir(), "configs", "session-title.json"), "utf8")) ?? {};
   } catch {
-    return undefined;
+    // no file: disabled
   }
+  const model = typeof config.model === "string" && config.model.includes("/") ? config.model : undefined;
+  const at = config.retitleAt;
+  const retitleAt = typeof at === "number" && Number.isInteger(at) && at >= 0 ? at : DEFAULT_RETITLE_AT;
+  return { model, retitleAt };
 }
 
 function textOf(content: unknown): string {
@@ -79,7 +82,7 @@ function cleanTitle(raw: string): string {
 }
 
 export default function (pi: ExtensionAPI) {
-  const modelSetting = readModelSetting();
+  const { model: modelSetting, retitleAt } = readSettings();
   if (!modelSetting) return;
 
   let inFlight: AbortController | undefined;
@@ -191,9 +194,10 @@ export default function (pi: ExtensionAPI) {
     void ask(ctx, FIRST_TITLE_PROMPT, text).then((raw) => apply(ctx, raw));
   });
 
-  // Third prompt settled: drift check (or a first title, if the first call failed).
+  // Prompt number retitleAt settled: drift check (or a first title, if the
+  // first call failed).
   pi.on("agent_settled", (_event, ctx) => {
-    if (!ctx.hasUI || isManuallyNamed(ctx) || userMessageCount(ctx) !== RETITLE_AT_USER_MESSAGE) return;
+    if (!retitleAt || !ctx.hasUI || isManuallyNamed(ctx) || userMessageCount(ctx) !== retitleAt) return;
     const current = pi.getSessionName();
     const input = current
       ? `Current title: ${current}\n\n<conversation>\n${transcript(ctx)}\n</conversation>`

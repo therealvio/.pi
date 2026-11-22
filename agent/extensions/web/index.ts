@@ -1,4 +1,6 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Type } from "typebox";
 
 /**
@@ -22,6 +24,12 @@ import { Type } from "typebox";
  * tells the agent to try context7, or to call web_search again when the
  * question is not about a library or context7 has no match. The gate is off
  * when no context7 tool is active, for example when the MCP server is down.
+ *
+ * Config (~/.pi/agent/configs/web.json), each key optional:
+ *   { "context7First": true, "fetchChars": 20000, "searchResults": 8,
+ *     "timeoutMs": 20000 }
+ * context7First false turns the gate off. searchResults and fetchChars are
+ * defaults; the agent can still ask for other values per call.
  */
 const CONTEXT7_PREFIX = "mcp__context7__";
 const CONTEXT7_FIRST =
@@ -34,10 +42,24 @@ const CONTEXT7_FIRST =
 
 const USER_AGENT = "pi-web/1.0";
 const SEARCH_URL = "https://html.duckduckgo.com/html/";
-const DEFAULT_RESULTS = 8;
+// DuckDuckGo's no-JavaScript page has at most about 20 results.
 const MAX_RESULTS = 20;
-const DEFAULT_FETCH_CHARS = 20_000;
-const TIMEOUT_MS = 20_000;
+
+function readConfig(): Record<string, unknown> {
+	try {
+		return JSON.parse(readFileSync(join(getAgentDir(), "configs", "web.json"), "utf8")) ?? {};
+	} catch {
+		return {};
+	}
+}
+const config = readConfig();
+const positiveInt = (value: unknown, fallback: number) =>
+	typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+
+const CONTEXT7_GATE = config.context7First !== false;
+const DEFAULT_RESULTS = Math.min(positiveInt(config.searchResults, 8), MAX_RESULTS);
+const DEFAULT_FETCH_CHARS = positiveInt(config.fetchChars, 20_000);
+const TIMEOUT_MS = positiveInt(config.timeoutMs, 20_000);
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
@@ -132,7 +154,7 @@ export default function (pi: ExtensionAPI) {
 			context7Used = true;
 			return;
 		}
-		if (event.toolName !== "web_search" || context7Used || nudged) return;
+		if (!CONTEXT7_GATE || event.toolName !== "web_search" || context7Used || nudged) return;
 		if (!pi.getActiveTools().some((t) => t.startsWith(CONTEXT7_PREFIX))) return;
 		nudged = true;
 		return { block: true, reason: CONTEXT7_FIRST };
@@ -142,7 +164,8 @@ export default function (pi: ExtensionAPI) {
 		name: "web_search",
 		label: "Web search",
 		description:
-			"Search the web (DuckDuckGo). Returns title, URL and snippet for each result. Read a result with web_fetch. For a library, framework, SDK, API or CLI tool, call context7 first; the first web_search in a prompt is blocked until context7 has run.",
+			"Search the web (DuckDuckGo). Returns title, URL and snippet for each result. Read a result with web_fetch. For a library, framework, SDK, API or CLI tool, call context7 first" +
+			(CONTEXT7_GATE ? "; the first web_search in a prompt is blocked until context7 has run." : "."),
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
 			limit: Type.Optional(Type.Number({ description: `Results to return (default ${DEFAULT_RESULTS}, max ${MAX_RESULTS})` })),

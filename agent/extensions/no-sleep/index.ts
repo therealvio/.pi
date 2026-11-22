@@ -5,8 +5,15 @@
  * notifications are emitted for routine caffeination state changes.
  * Error/warning notifications are still surfaced.
  *
- * Env: PI_NO_SLEEP=0 turns it off, PI_NO_SLEEP_SCOPE=session keeps the Mac
- * awake for the whole session, PI_NO_SLEEP_DISPLAY=1 also keeps the screen on.
+ * Config (~/.pi/agent/configs/no-sleep.json):
+ *   { "enabled": true, "scope": "agent", "display": false }
+ * scope "agent" keeps the Mac awake while the agent runs; "session" for the
+ * whole session. display true also keeps the screen on. A missing file or key
+ * uses the values above.
+ *
+ * Env overrides the file for one launch: PI_NO_SLEEP=0 turns it off,
+ * PI_NO_SLEEP_SCOPE=session sets the scope, PI_NO_SLEEP_DISPLAY=1 keeps the
+ * screen on.
  * At runtime: /no-sleep [status|on|off|toggle|agent|session].
  *
  * caffeinate is spawned in pi's own process, not through the bash sandbox.
@@ -15,17 +22,30 @@
  * @src https://github.com/mitsuhiko/agent-stuff/blob/ab0a07b/extensions/no-sleep.ts
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const MACOS = process.platform === "darwin";
 
 type Scope = "agent" | "session";
 type Level = "info" | "warning" | "error";
 
+function readConfig(): { enabled?: unknown; scope?: unknown; display?: unknown } {
+  try {
+    return JSON.parse(readFileSync(join(getAgentDir(), "configs", "no-sleep.json"), "utf8")) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+const config = readConfig();
+const bool = (value: unknown, fallback: boolean) => (typeof value === "boolean" ? value : fallback);
+
 let caffeinate: ChildProcess | undefined;
-let enabled = readBooleanEnv("PI_NO_SLEEP", true);
+let enabled = readBooleanEnv("PI_NO_SLEEP", bool(config.enabled, true));
 let scope: Scope = readScopeEnv();
 let agentActive = false;
 let lastError: string | undefined;
@@ -39,15 +59,20 @@ function readBooleanEnv(name: string, defaultValue: boolean): boolean {
 }
 
 function readScopeEnv(): Scope {
-  return /^session$/i.test(process.env.PI_NO_SLEEP_SCOPE ?? "") ? "session" : "agent";
+  const value = process.env.PI_NO_SLEEP_SCOPE || (typeof config.scope === "string" ? config.scope : "");
+  return /^session$/i.test(value) ? "session" : "agent";
+}
+
+function keepDisplay(): boolean {
+  return readBooleanEnv("PI_NO_SLEEP_DISPLAY", bool(config.display, false));
 }
 
 function caffeinateArgs(): string[] {
   const args = ["-i", "-s"];
 
-  // By default, allow the display to sleep. Set PI_NO_SLEEP_DISPLAY=1 to keep
-  // the screen awake too.
-  if (readBooleanEnv("PI_NO_SLEEP_DISPLAY", false)) {
+  // By default, allow the display to sleep. "display": true in the config or
+  // PI_NO_SLEEP_DISPLAY=1 keeps the screen awake too.
+  if (keepDisplay()) {
     args.push("-d");
   }
 
@@ -136,7 +161,7 @@ function describeState(): string {
   }
 
   const state = caffeinate ? `active (pid ${caffeinate.pid ?? "unknown"})` : "idle";
-  const display = readBooleanEnv("PI_NO_SLEEP_DISPLAY", false) ? "yes" : "no";
+  const display = keepDisplay() ? "yes" : "no";
   return [
     `No Sleep is ${enabled ? "enabled" : "disabled"}.`,
     `scope: ${scope}`,

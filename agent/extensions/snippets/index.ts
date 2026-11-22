@@ -6,6 +6,10 @@ import { join } from "node:path";
 // Type e.g. "refactor the parser, kiss", press the key, and "kiss" becomes the
 // snippet text. Several snippets can go in one message.
 //
+// Snippets come from ~/.pi/agent/configs/snippets.json:
+//   { "snippets": { "kiss": "keep it simple: ..." } }
+// No file or no snippets = the key does nothing. Edit the file, then /reload.
+//
 // The key comes from "ext.snippets.expand" in ~/.pi/agent/keybindings.json.
 // Pi only knows app.* and tui.* ids, so this extension reads that entry itself.
 // The default key is ctrl+j, which pi also uses for "new line", so
@@ -14,16 +18,21 @@ import { join } from "node:path";
 // @src https://github.com/jay-aye-see-kay/.pi/blob/71b89d9/agent/extensions/snippets.ts
 const ACTION = "ext.snippets.expand";
 
-const SNIPPETS: Record<string, string> = {
-	["23"]: "give me 2-3 options",
-	brief: "keep it brief: bullet points, focus on the why, no preamble",
-	fix: "identify the root cause, explain it, then provide the fix with a brief justification",
-	kiss: "keep it simple: pick the most straightforward approach, we can improve later if needed",
-	pat: "look at how similar things are already done in this codebase and follow that pattern",
-	sand: "this is a sandbox issue that shouldn't be there, stop the current task and focus only on adjusting the sandbox",
-	sub: "use a subagent for this",
-	tdd: "use red/green TDD: write a failing test first, then the minimal code to make it pass, then refactor",
-};
+/** Trigger word -> text, from configs/snippets.json. Bad entries are skipped. */
+function readSnippets(): Map<string, string> {
+	try {
+		const config = JSON.parse(readFileSync(join(getAgentDir(), "configs", "snippets.json"), "utf8"));
+		const raw = config?.snippets;
+		if (!raw || typeof raw !== "object" || Array.isArray(raw)) return new Map();
+		return new Map(
+			Object.entries(raw as Record<string, unknown>).filter(
+				(e): e is [string, string] => !/\s/.test(e[0]) && typeof e[1] === "string" && e[1].trim() !== "",
+			),
+		);
+	} catch {
+		return new Map();
+	}
+}
 
 type ShortcutKey = Parameters<ExtensionAPI["registerShortcut"]>[0];
 
@@ -40,6 +49,7 @@ function configuredKeys(): string[] {
 }
 
 export default function (pi: ExtensionAPI) {
+	const snippets = readSnippets();
 	const keys = [...new Set(configuredKeys())];
 
 	if (keys.length === 0) {
@@ -60,7 +70,7 @@ export default function (pi: ExtensionAPI) {
 				if (!match) return;
 
 				const trigger = match[1];
-				const expansion = SNIPPETS[trigger];
+				const expansion = snippets.get(trigger);
 				if (!expansion) return;
 
 				const before = text.slice(0, text.length - trigger.length);

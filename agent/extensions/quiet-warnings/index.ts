@@ -4,10 +4,22 @@
 // (PYTHONWARNINGS). Bash calls inherit pi's process.env, so they get these.
 // Ruby (RUBYOPT -W0) is left out until Ruby is in use.
 //
-// Enabled by default; toggle for the session with /quiet-warnings.
+// Config (~/.pi/agent/configs/quiet-warnings.json): { "enabled": true }.
+// A missing file means enabled. /quiet-warnings toggles it for the session.
 //
 // @src https://github.com/jay-aye-see-kay/.pi/blob/30b5da4/agent/extensions/quiet-warnings.ts
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+function enabledInConfig(): boolean {
+	try {
+		const config = JSON.parse(readFileSync(join(getAgentDir(), "configs", "quiet-warnings.json"), "utf8"));
+		return config?.enabled !== false;
+	} catch {
+		return true;
+	}
+}
 
 // Snapshot of each key's value before this extension first set it, so
 // /quiet-warnings can restore it. It lives on globalThis because /reload loads
@@ -38,8 +50,9 @@ function restore() {
 }
 
 export default function quietWarnings(pi: ExtensionAPI) {
-	let enabled = true;
-	apply();
+	let enabled = enabledInConfig();
+	if (enabled) apply();
+	else restore();
 
 	pi.registerCommand("quiet-warnings", {
 		description: "Toggle suppression of runtime warnings in bash calls (Node/Bun, Python)",

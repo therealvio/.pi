@@ -21,6 +21,7 @@ const SNIPPETS: Record<string, string> = {
 	kiss: "keep it simple: pick the most straightforward approach, we can improve later if needed",
 	pat: "look at how similar things are already done in this codebase and follow that pattern",
 	sand: "this is a sandbox issue that shouldn't be there, stop the current task and focus only on adjusting the sandbox",
+	sub: "use a subagent for this",
 	tdd: "use red/green TDD: write a failing test first, then the minimal code to make it pass, then refactor",
 };
 

@@ -55,6 +55,7 @@
       "source": "npm:@adrianapan/pikit@1.1.9",
       "themes": []
     },
+    "npm:context-mode@2.2.2",
     "npm:pi-lens@4.5.2",
     "npm:pi-mcp-adapter@7.0.1",
     "npm:pi-worktrunk"

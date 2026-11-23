@@ -6,6 +6,11 @@
  * so they are gated separately in the `tool_call` hook. pikit's `artifact` tool
  * also reads a file in-process when it gets `path`, so it is gated as a read.
  *
+ * context-mode's ctx_* tools also run outside the bash tool. In sandbox mode,
+ * ctx_execute and ctx_batch code is rewritten to run under the OS sandbox,
+ * ctx_index path/url is gated like read/network, and ctx_upgrade asks first.
+ * In prompt mode they ask like bash.
+ *
  * Two modes (config `mode`, default "sandbox"; switch at runtime with
  * `/sandbox enable` or `/sandbox prompt`):
  *
@@ -38,8 +43,8 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { constants as osConstants, homedir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { constants as osConstants, homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import type { BashOperations, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -351,6 +356,37 @@ async function violationsFor(commandId: string, wait: boolean): Promise<string[]
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// ── context-mode (npm:context-mode) ─────────────────────────────────────────
+
+/**
+ * Inputs of the context-mode tools this extension gates (v2.2.2 schemas).
+ * Its tools run in the pi process and spawn code with `sh -c <code>` (shell)
+ * or `<runtime> <tempfile>` (other languages), outside the bash tool.
+ */
+interface CtxInput {
+	language?: string;
+	code?: string;
+	file?: string;
+	background?: boolean;
+	commands?: string[];
+	path?: string;
+	url?: string;
+}
+
+/** Languages context-mode runs as `<shell> -c <code>`. */
+const CTX_SHELLS = new Set(["shell", "sh", "bash", "zsh", "dash", "ksh", "fish"]);
+
+/** Script languages: the interpreter argv and the file extension context-mode uses. */
+const CTX_RUNTIMES: Record<string, { argv: string[]; ext: string }> = {
+	javascript: { argv: ["node"], ext: ".js" },
+	typescript: { argv: ["node"], ext: ".ts" },
+	python: { argv: ["python3"], ext: ".py" },
+	powershell: { argv: ["pwsh", "-NoProfile", "-NonInteractive", "-File"], ext: ".ps1" },
+};
+
+/** POSIX single-quote one shell word. */
+const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+
 // ── Extension ─────────────────────────────────────────────────────────────────
 
 /**
@@ -650,6 +686,7 @@ export default function (pi: ExtensionAPI) {
 
 	// ── tool_call: fs gates (sandbox) / confirm-everything (prompt) ─────────────
 	pi.on("tool_call", async (event, ctx) => {
+		if (event.toolName.startsWith("ctx_")) return gateCtx(event.toolName, event.toolCallId, event.input as CtxInput, ctx);
 		const artifactPath = artifactReadPath(event);
 		if (mode === "prompt") {
 			if (isToolCallEventType("read", event)) return confirmOnce(ctx, "read", event.input.path);
@@ -693,6 +730,117 @@ export default function (pi: ExtensionAPI) {
 		const path = (event.input as { path?: unknown }).path;
 		return typeof path === "string" && path !== "" ? join(process.cwd(), path) : undefined;
 	}
+
+	// ── context-mode gate ───────────────────────────────────────────────────────
+	// Per ctx_* call: how many wrapWithSandbox() refs it holds and which temp dir
+	// it owns. Released in tool_result.
+	const ctxPending = new Map<string, { generation: number; wraps: number; background: boolean; tmpDir?: string }>();
+
+	/**
+	 * Run context-mode's code inside the OS sandbox instead of blocking or
+	 * prompting for it. The tool spawns `sh -c <code>`, so replacing `code` with
+	 * the wrapped command string runs it under the same policy as bash.
+	 * Script languages are rewritten to shell: their code goes to a temp file
+	 * that the wrapped interpreter runs.
+	 */
+	async function wrapCtxCode(language: string, code: string, pending: { tmpDir?: string }): Promise<string> {
+		let inner: string;
+		if (language === "shell" || language === "sh" || language === "bash") inner = code;
+		else if (CTX_SHELLS.has(language)) inner = `${language} -c ${shq(code)}`;
+		else {
+			const rt = CTX_RUNTIMES[language] ?? { argv: [language], ext: "" };
+			pending.tmpDir ??= mkdtempSync(join(tmpdir(), "pi-ctx-"));
+			const file = join(pending.tmpDir, `code${rt.ext}`);
+			writeFileSync(file, code, "utf-8");
+			inner = [...rt.argv, file].map(shq).join(" ");
+		}
+		// Same reason as sandboxedBashOps: Node ignores the sandbox proxy without this.
+		return SandboxManager.wrapWithSandbox(`export NODE_USE_ENV_PROXY="\${NODE_USE_ENV_PROXY:-1}"\n${inner}`);
+	}
+
+	async function gateCtx(toolName: string, toolCallId: string, input: CtxInput, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> {
+		if (mode === "prompt") return promptCtx(toolName, input, ctx);
+		// Same as bash: with the OS sandbox off, ctx tools run bare.
+		if (!sandboxOn) return;
+		if (toolName === "ctx_execute" || toolName === "ctx_batch") return sandboxCtxRun(toolName, toolCallId, input, ctx);
+		if (toolName === "ctx_index") return gateCtxIndex(input, ctx);
+		if (toolName === "ctx_upgrade") return confirmOnce(ctx, "context-mode upgrade", "Rewrites pi host config under ~/.pi/agent");
+	}
+
+	function promptCtx(toolName: string, input: CtxInput, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> | undefined {
+		if (toolName === "ctx_execute") return confirmOnce(ctx, "run", `${input.language ?? ""}: ${input.code ?? ""}`);
+		if (toolName === "ctx_batch") return confirmOnce(ctx, "run", (input.commands ?? []).join("\n"));
+		if (toolName === "ctx_index" && input.path) return confirmOnce(ctx, "read", input.path);
+		if (toolName === "ctx_index" && input.url) return confirmOnce(ctx, "fetch", input.url);
+		if (toolName === "ctx_upgrade") return confirmOnce(ctx, "context-mode upgrade", "Rewrites pi host config under ~/.pi/agent");
+		return undefined;
+	}
+
+	/** Read gate for a path a ctx tool reads in-process or hands to its code. */
+	function gateCtxRead(path: string, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> | undefined {
+		const p = canonicalizePath(resolve(cwd, path));
+		if (matchesPattern(p, effAllowRead())) return undefined;
+		return gateTool(ctx, "read", p);
+	}
+
+	async function sandboxCtxRun(toolName: string, toolCallId: string, input: CtxInput, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> {
+		// context-mode does not read `file`; it passes the path to the code as
+		// CTX_FILE. Gate it like the read tool so the agent cannot pick a
+		// path the read tool would ask about.
+		if (input.file) {
+			const blocked = await gateCtxRead(input.file, ctx);
+			if (blocked) return blocked;
+		}
+		const pending = { generation: sandboxGeneration, wraps: 0, background: input.background === true, tmpDir: undefined as string | undefined };
+		ctxPending.set(toolCallId, pending);
+		if (toolName === "ctx_execute" && typeof input.code === "string") {
+			input.code = await wrapCtxCode(input.language ?? "shell", input.code, pending);
+			input.language = "shell";
+			pending.wraps++;
+		}
+		if (toolName === "ctx_batch" && Array.isArray(input.commands)) {
+			for (let i = 0; i < input.commands.length; i++) {
+				input.commands[i] = await wrapCtxCode("shell", input.commands[i], pending);
+				pending.wraps++;
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * ctx_index reads paths and fetches URLs in the pi process, so the OS
+	 * sandbox cannot see them. Gate them here like read and network.
+	 */
+	async function gateCtxIndex(input: CtxInput, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> {
+		if (input.path) return gateCtxRead(input.path, ctx);
+		if (!input.url) return undefined;
+		let host: string;
+		try {
+			host = new URL(input.url).hostname;
+		} catch {
+			return undefined; // context-mode rejects the bad URL itself
+		}
+		// Only the first host is checked: context-mode follows redirects
+		// in-process, out of reach of this hook.
+		if (domainAllowed(host, loadConfig(cwd).network?.deniedDomains ?? [])) {
+			return { block: true, reason: `Sandbox: fetch denied for "${host}" (in deniedDomains)` };
+		}
+		if (await askNetwork({ host, port: undefined })) return undefined;
+		return { block: true, reason: `Sandbox: network access to "${host}" denied` };
+	}
+
+	pi.on("tool_result", async (event) => {
+		const pending = ctxPending.get(event.toolCallId);
+		if (!pending) return;
+		ctxPending.delete(event.toolCallId);
+		// A background run outlives its tool result: keep its temp file and its
+		// refs. On Linux a held ref only leaves empty mount-point files behind.
+		if (pending.background) return;
+		if (pending.generation === sandboxGeneration) {
+			for (let i = 0; i < pending.wraps; i++) SandboxManager.cleanupAfterCommand();
+		}
+		if (pending.tmpDir) rmSync(pending.tmpDir, { recursive: true, force: true });
+	});
 
 	/** Prompt for an in-process read/write, serialised with all other grant prompts. */
 	async function gateTool(ctx: ExtensionContext, kind: "read" | "write", path: string): Promise<{ block: true; reason: string } | undefined> {
@@ -767,7 +915,9 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (sandboxOn) try { await resetSandbox(); } catch {}
+		if (sandboxOn) try { await resetSandbox(); } catch {
+			// Best effort: pi is shutting down, so there is no one to report to.
+		}
 	});
 
 	// ── mode switching ────────────────────────────────────────────────────────
@@ -807,7 +957,9 @@ export default function (pi: ExtensionAPI) {
 	async function enterPromptMode(ctx: ExtensionContext): Promise<void> {
 		mode = "prompt";
 		if (sandboxOn) {
-			try { await resetSandbox(); } catch {}
+			try { await resetSandbox(); } catch {
+				// Best effort: prompt mode does not use the sandbox, so a failed reset does not block it.
+			}
 			sandboxOn = false;
 		}
 		setModeStatus(ctx);

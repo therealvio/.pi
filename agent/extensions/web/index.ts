@@ -31,11 +31,11 @@ import { Type } from "typebox";
  * context7First false turns the gate off. searchResults and fetchChars are
  * defaults; the agent can still ask for other values per call.
  */
-const CONTEXT7_PREFIX = "mcp__context7__";
+const CONTEXT7_PREFIX = "mcp__context7_";
 const CONTEXT7_FIRST =
 	"Check context7 first. For a library, framework, SDK, API or CLI tool " +
 	"(docs, config, flags, versions, examples), call " +
-	"mcp__context7__resolve_library_id, then mcp__context7__query_docs. If the " +
+	"mcp__context7_resolve-library-id, then mcp__context7_query-docs. If the " +
 	"question is not about one of those, or context7 has no match, call " +
 	"web_search again with the same query; it will not be blocked again for " +
 	"this prompt.";

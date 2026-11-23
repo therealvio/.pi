@@ -8,8 +8,8 @@
     "web_search",
     "web_fetch",
     "artifact",
-    "mcp__context7__resolve_library_id",
-    "mcp__context7__query_docs"
+    "mcp__context7_resolve-library-id",
+    "mcp__context7_query-docs"
   ],
   "bashPatterns": {
     "safePatterns": [

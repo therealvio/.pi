@@ -23,7 +23,7 @@ Use ASD-STE100 (Simplified Technical English) for prose.
 ## Tooling
 
 - Use ripgrep (command: rg) to perform code searching
-- For any question about a library, framework, SDK, API or CLI tool (docs, config, flags, versions, examples), always call context7 first: `mcp__context7__resolve_library_id`, then `mcp__context7__query_docs`. Use `web_search` only when the question is about none of those, or context7 has no match. Read a search result with `web_fetch`.
+- For any question about a library, framework, SDK, API or CLI tool (docs, config, flags, versions, examples), always call context7 first: `mcp__context7_resolve-library-id`, then `mcp__context7_query-docs`. Use `web_search` only when the question is about none of those, or context7 has no match. Read a search result with `web_fetch`.
 - For GitHub repos, files and API data, use `gh-axi`, not `curl` or `web_fetch`. Read a file with `gh-axi api /repos/<owner>/<repo>/contents/<path> --jq '.content | @base64d' --full`. Get the latest commit for a path with `gh-axi api "/repos/<owner>/<repo>/commits?path=<path>&per_page=1" --jq '.[0].sha'`.
 
 ## Diagrams

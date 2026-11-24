@@ -75,6 +75,8 @@ interface SandboxConfig {
 	mode?: Mode;
 	enabled?: boolean;
 	enableWeakerNetworkIsolation?: boolean;
+	/** sandbox-runtime ignoreViolations: command substring ("*" = all) → violation-line substrings to drop. */
+	ignoreViolations?: Record<string, string[]>;
 	network?: NetworkConfig;
 	filesystem?: FilesystemConfig;
 }
@@ -114,6 +116,7 @@ function loadConfig(cwd: string): SandboxConfig {
 		mode: o.mode ?? acc.mode,
 		enabled: o.enabled ?? acc.enabled,
 		enableWeakerNetworkIsolation: o.enableWeakerNetworkIsolation ?? acc.enableWeakerNetworkIsolation,
+		ignoreViolations: { ...acc.ignoreViolations, ...o.ignoreViolations },
 		network: { ...acc.network, ...o.network },
 		filesystem: { ...acc.filesystem, ...o.filesystem },
 	}), {} as SandboxConfig);
@@ -517,6 +520,7 @@ export default function (pi: ExtensionAPI) {
 		const gitDenyWrite = gitDir ? [join(gitDir, "hooks"), ...(cfg.filesystem?.allowGitConfig ? [] : [join(gitDir, "config")])] : [];
 		return {
 			enableWeakerNetworkIsolation: cfg.enableWeakerNetworkIsolation,
+			ignoreViolations: cfg.ignoreViolations,
 			network: {
 				allowedDomains: effAllowedDomains(),
 				deniedDomains: cfg.network?.deniedDomains ?? [],

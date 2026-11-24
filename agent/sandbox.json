@@ -44,6 +44,12 @@
       "~/.pi/agent/sandbox.json"
     ]
   },
+  "ignoreViolations": {
+    "*": [
+      "sysctl-read kern.iossupportversion",
+      "system-info vfs.disk-space"
+    ]
+  },
   "network": {
     "allowAllUnixSockets": false,
     "allowLocalBinding": true,

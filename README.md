@@ -1,14 +1,6 @@
-# pi experiments
+# .pi
 
-## workflow shit
-
-- [ ] sandbox mode - this is gonna be chunky.
-
-## pi setup
-
-TODO: move these into dotfiles/prep-macbook when you're ready to use pi seriously.
-
-pi may need it's own repo, see: https://github.com/jay-aye-see-kay/.pi for inspiration.
+This is my personal Pi config repo. Yep.
 
 ### install
 

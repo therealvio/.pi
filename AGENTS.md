@@ -4,7 +4,7 @@ This repo holds the user's config for [pi](https://pi.dev), the earendil-works c
 
 ## Layout
 
-`agent/` mirrors `~/.pi/agent/`. A file at `agent/<path>` installs to `~/.pi/agent/<path>`.
+`agent/` mirrors `~/.pi/agent/`. A file at `agent/<path>` installs to `~/.pi/agent/<path>`. `pi-lens/` mirrors `~/.pi-lens/` the same way.
 
 | Path | Purpose |
 |---|---|
@@ -14,7 +14,8 @@ This repo holds the user's config for [pi](https://pi.dev), the earendil-works c
 | `agent/configs/<name>.json` | Config for one extension, read by that extension. |
 | `agent/keybindings.json` | Key bindings, including custom `ext.<name>.<action>` ids. |
 | `agent/extensions/<name>/index.ts` | Local extensions, one folder each. |
-| `setup.sh` | Installs `agent/` into `~/.pi/agent`. |
+| `pi-lens/config.json` | Global config for the pi-lens package. opengrep is off: it hangs behind Netskope. |
+| `setup.sh` | Installs `agent/` into `~/.pi/agent` and `pi-lens/` into `~/.pi-lens`. |
 
 ## How changes reach pi
 

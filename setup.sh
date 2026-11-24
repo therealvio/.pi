@@ -2,8 +2,9 @@
 # setup.sh: copy this repo's pi config into the pi agent dir.
 #
 # Copies every git-tracked file under agent/ to ~/.pi/agent (or
-# $PI_CODING_AGENT_DIR). Untracked files, such as node_modules or drafts,
-# are not copied.
+# $PI_CODING_AGENT_DIR). Copies every git-tracked file under pi-lens/ to
+# ~/.pi-lens (or $PI_LENS_HOME), where the pi-lens package reads its global
+# config. Untracked files, such as node_modules or drafts, are not copied.
 #
 # - settings.json is merged into the live file, repo values win. Pi writes
 #   some keys itself (lastChangelogVersion, `pi config` toggles), and a plain
@@ -21,7 +22,7 @@
 set -euo pipefail
 
 usage() {
-	sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 DRY_RUN=0
@@ -44,16 +45,18 @@ command -v rtk >/dev/null 2>&1 || { HAVE_RTK=0; echo "warning: rtk is not on PAT
 command -v wt >/dev/null 2>&1 || echo "warning: wt is not on PATH; the pi-worktrunk tool will not work." >&2
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-SRC="$REPO/agent"
 DEST="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+# pi-lens reads PI_LENS_HOME the same way, so a test run can redirect both.
+LENS_DEST="${PI_LENS_HOME:-$HOME/.pi-lens}"
 BAK="$DEST/_bak/$(date +%Y%m%d-%H%M%S)"
 
 created=0 updated=0 unchanged=0
 npm_dirs=()
 
-# Write $2 (a file) to $DEST/$1. Back up the old file if it differs.
+# Write $2 (a file) to $3. Back up the old file to $BAK/$1 if it differs.
+# $1 is also the name shown in the log.
 install_file() {
-	local rel="$1" src="$2" dest="$DEST/$1"
+	local rel="$1" src="$2" dest="$3"
 	if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
 		unchanged=$((unchanged + 1))
 		return
@@ -86,11 +89,15 @@ while IFS= read -r path; do
 		jq -s '.[0] * (.[1] | del(.lastChangelogVersion))' "$DEST/$rel" "$src" >"$tmp/settings.json"
 		src="$tmp/settings.json"
 	fi
-	install_file "$rel" "$src"
+	install_file "$rel" "$src" "$DEST/$rel"
 	if [[ "$rel" == extensions/*/package-lock.json ]]; then
 		npm_dirs+=("$(dirname "$rel")")
 	fi
 done < <(git -C "$REPO" ls-files agent)
+
+while IFS= read -r path; do
+	install_file "$path" "$REPO/$path" "$LENS_DEST/${path#pi-lens/}"
+done < <(git -C "$REPO" ls-files pi-lens)
 
 # The secrets extension reads configs/.env.private for secrets that stay out of
 # git. Create an empty one so it is ready to edit. Never touch an existing file:

@@ -13,13 +13,15 @@
 #   track are listed, because pi loads them too.
 # - Extensions with a package-lock.json get `npm ci` in the agent dir.
 # - `rtk init` installs rtk's own extension, if rtk is on PATH.
+# - The installed pikit package.json is patched to move typebox to
+#   peerDependencies, until upstream fixes it.
 #
 # Usage: ./setup.sh [--dry-run]
 
 set -euo pipefail
 
 usage() {
-	sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 DRY_RUN=0
@@ -125,6 +127,23 @@ if [[ $HAVE_RTK -eq 1 ]]; then
 	else
 		echo "rtk init --agent pi"
 		[[ $DRY_RUN -eq 1 ]] || rtk init -g --agent pi </dev/null >/dev/null
+	fi
+fi
+
+# Pi warns when a package lists a host-provided module (typebox) in
+# dependencies, not peerDependencies. Move it to a "*" peer in the installed
+# manifest until upstream fixes it. Pi installs packages on start, so on a new
+# machine run this script again after the first start. A pinned npm version is
+# not reinstalled, so the patch stays until the pin changes. Once upstream
+# drops typebox from dependencies, this step does nothing.
+# Upstream: npm:@adrianapan/pikit (1.1.9 and earlier).
+pikit_pkg="$DEST/npm/node_modules/@adrianapan/pikit/package.json"
+if [[ -f "$pikit_pkg" ]] && jq -e '.dependencies.typebox' "$pikit_pkg" >/dev/null; then
+	echo "patch   npm/node_modules/@adrianapan/pikit/package.json (typebox -> peerDependencies)"
+	if [[ $DRY_RUN -eq 0 ]]; then
+		tmp=$(mktemp)
+		jq --indent 2 'del(.dependencies.typebox) | .peerDependencies.typebox = "*"' "$pikit_pkg" >"$tmp"
+		mv "$tmp" "$pikit_pkg"
 	fi
 fi
 

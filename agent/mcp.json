@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "aws-knowledge": {
+      "type": "http",
+      "url": "https://knowledge-mcp.global.api.aws"
+    },
     "context7": {
       "exposure": "direct",
       "headers": {
@@ -7,6 +11,14 @@
       },
       "type": "http",
       "url": "https://mcp.context7.com/mcp"
+    },
+    "imds-broker": {
+      "args": ["mcp"],
+      "command": "imds-broker"
+    },
+    "sandy": {
+      "args": ["mcp"],
+      "command": "sandy"
     }
   }
 }

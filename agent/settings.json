@@ -56,6 +56,15 @@
       "themes": []
     },
     "npm:context-mode@2.2.2",
+    {
+      "extensions": [],
+      "prompts": [],
+      "skills": [
+        "skills/gh-axi"
+      ],
+      "source": "npm:gh-axi@0.1.52",
+      "themes": []
+    },
     "npm:pi-lens@4.5.2",
     "npm:pi-mcp-adapter@7.0.1",
     "npm:pi-worktrunk"

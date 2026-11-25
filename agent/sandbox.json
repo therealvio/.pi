@@ -64,7 +64,9 @@
       "~/tries"
     ],
     "allowedDomains": [
+      "*.blob.core.windows.net",
       "*.github.com",
+      "*.githubusercontent.com",
       "*.npmjs.org",
       "*.pypi.org",
       "*.schemastore.org",
@@ -73,12 +75,9 @@
       "github.com",
       "localhost",
       "opentelemetry.io",
-      "pkg-containers.githubusercontent.com",
       "proxy.golang.org",
-      "raw.githubusercontent.com",
       "registry.npmjs.org",
       "registry.yarnpkg.com",
-      "release-assets.githubusercontent.com",
       "storage.googleapis.com",
       "sum.golang.org"
     ]

@@ -79,7 +79,7 @@ function callLines(theme: Theme, calls: ToolCall[]): string[] {
 }
 
 export function renderCall(
-  args: { resume?: string | null; model?: string; goal?: string },
+  args: { resume?: string | null; model?: string; goal?: string; cwd?: string | null },
   defaultModel: string,
   theme: Theme,
 ): Text {
@@ -88,6 +88,8 @@ export function renderCall(
   if (resume) head += " " + theme.fg("accent", `\u21bb ${resume}`);
   const model = (args.model ?? "").trim() || defaultModel;
   head += " " + theme.fg("muted", shortModel(model));
+  const cwd = (args.cwd ?? "").trim();
+  if (cwd) head += " " + theme.fg("accent", `@ ${clip(cwd, 60)}`);
   const goal = (args.goal ?? "").trim().split("\n")[0];
   if (goal) head += " " + theme.fg("dim", clip(goal, 160));
   return new Text(head, 0, 0);

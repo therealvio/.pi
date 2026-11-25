@@ -1,14 +1,15 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
 import type { SessionTotals, SubStats } from "./types";
 import { readKeepDays, readSubagentModels } from "./config";
 import { BLOCKED_RE, buildPrompt, runSubagent, SESSION_ID_RE } from "./runner";
-import { findSessionDir, openSubagentPicker, pruneSessions } from "./sessions";
+import { findSessionDir, openSubagentPicker, pruneSessions, sessionCwd } from "./sessions";
 import {
   clip,
   failure,
@@ -49,11 +50,17 @@ import {
  * extension to return early — the subagent tool is never registered inside a
  * subagent.
  *
+ * Directory: the child runs in the parent's directory, or in the `cwd`
+ * parameter when it is set (for example a git worktree of another repo).
+ * A resumed subagent without `cwd` runs in the directory of its first run.
+ *
  * Sandboxing: the child is spawned directly (bypassing the sandboxed bash tool),
- * but it is NOT unsandboxed — it spawns with the standard global config and so
- * sandboxes ITSELF from `~/.pi/agent/sandbox.json`. In --mode json there is no
- * UI, so it is deny-by-default: anything not pre-allowed in sandbox.json is
- * aborted rather than prompted.
+ * but it is NOT unsandboxed — the sandbox extension loads in the child and
+ * sandboxes it. The parent's sandbox extension puts its effective policy in
+ * PI_SANDBOX_INHERIT, and the child copies the parent's environment. So the
+ * child gets the parent's allow lists, deny lists and session grants and
+ * denials, and no more. In --mode json there is no UI, so it is
+ * deny-by-default: access the parent does not have is denied, not prompted.
  *
  * Resume: every result footer carries the subagent's session id (e.g.
  * `sub-1a2b3c4d`). Passing that id back as the `resume` parameter re-opens
@@ -219,6 +226,8 @@ Run several in parallel for independent subtasks, then merge.
 
 Key rule: the subagent can't see this conversation — state the outcome in \`goal\` and put everything it needs in \`context\`. It finishes with a standalone final report.
 
+To work in a worktree or another repo, set cwd to its path.
+
 Blockers: a result that starts with "SUBAGENT BLOCKED" needs the user. Do not work around the block, do the blocked work yourself, or retry with another subagent. Stop and show the user the block.`,
     parameters: Type.Object({
       goal: Type.String({
@@ -237,6 +246,12 @@ Blockers: a result that starts with "SUBAGENT BLOCKED" needs the user. Do not wo
 
 Good for: pulling more information out of a subagent that already holds it — a detail from a page/file/search it loaded, or the reasoning behind a result it gave you.
 Key rule: resume to get information not to do work.`,
+        }),
+      ),
+      // Optional and nullable for the same reason as `resume`.
+      cwd: Type.Optional(
+        Type.Union([Type.String(), Type.Null()], {
+          description: `Optional. Directory the subagent works in (absolute, ~/..., or relative to the current directory). Omit to use the current directory, or on resume the directory of the first run. The subagent gets the same sandbox access as you, not more.`,
         }),
       ),
     }),
@@ -270,6 +285,15 @@ Key rule: resume to get information not to do work.`,
       const sessionId = resumeId ?? `sub-${randomUUID().slice(0, 8)}`;
       const model = params.model ?? defaultModel;
 
+      const cwdArg = params.cwd?.trim();
+      // A resumed subagent without cwd continues where it first ran.
+      const cwd = cwdArg
+        ? resolveDir(ctx.cwd, cwdArg)
+        : (resumeId && sessionCwd(runDir, resumeId)) || ctx.cwd;
+      if (!cwd) {
+        return failure(`cwd '${cwdArg}' is not an existing directory.`, { cwd: cwdArg });
+      }
+
       const outcome = await runSubagent(
         {
           sessionId,
@@ -277,7 +301,7 @@ Key rule: resume to get information not to do work.`,
           model,
           prompt: buildPrompt(params.goal, params.context),
           sessionDir: runDir,
-          cwd: ctx.cwd,
+          cwd,
           signal,
         },
         // Live telemetry → inline tool block (drawn by renderResult with isPartial).
@@ -358,6 +382,19 @@ Key rule: resume to get information not to do work.`,
   });
 }
 
+/**
+ * `dir` as an absolute path (~ expanded, relative to `base`), or null when
+ * it is not an existing directory.
+ */
+function resolveDir(base: string, dir: string): string | null {
+  const abs = resolve(base, dir.replace(/^~(?=$|\/)/, homedir()));
+  try {
+    return statSync(abs).isDirectory() ? abs : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Keys bound to "ext.subagent.toggle" in keybindings.json, or none. */
 function readToggleKeys(): string[] {
   try {
@@ -393,9 +430,9 @@ function blockedText(stats: SubStats, report: string): string {
     `SUBAGENT BLOCKED \u2014 needs user review: ${stats.blockedReason}\n\n` +
     "Do not work around this block, do the blocked work yourself, or retry " +
     "with another subagent. Stop and tell the user what blocked the subagent " +
-    "and what would unblock it, then ask how to proceed. Access granted for " +
-    "this session only does not reach subagents; a project or global grant " +
-    "does.\n\n" +
+    "and what would unblock it, then ask how to proceed. A subagent gets " +
+    "the access you have when it starts, including grants for this session, " +
+    "and no more.\n\n" +
     denials +
     `Subagent report:\n${report}`
   );

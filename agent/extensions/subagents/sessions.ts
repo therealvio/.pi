@@ -1,6 +1,6 @@
 import type { ExtensionCommandContext, SessionInfo } from "@earendil-works/pi-coding-agent";
 import { SessionManager, SessionSelectorComponent } from "@earendil-works/pi-coding-agent";
-import { copyFileSync, mkdirSync, readdirSync, rmdirSync, statSync, unlinkSync } from "node:fs";
+import { closeSync, copyFileSync, mkdirSync, openSync, readdirSync, readSync, rmdirSync, statSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 /**
@@ -69,6 +69,31 @@ export function findSessionDir(sessionDir: string, id: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * The directory that subagent session `<id>` in `dir` ran in, from the
+ * `cwd` field of the file's first line (the session header). Returns null
+ * when the file or the field cannot be read.
+ */
+export function sessionCwd(dir: string, id: string): string | null {
+  try {
+    const file = readdirSync(dir).find((f) => f.endsWith(`_${id}.jsonl`));
+    if (!file) return null;
+    // Read only the start of the file: the header is one short line.
+    const fd = openSync(join(dir, file), "r");
+    const buf = Buffer.alloc(64 * 1024);
+    let n: number;
+    try {
+      n = readSync(fd, buf, 0, buf.length, 0);
+    } finally {
+      closeSync(fd);
+    }
+    const header = JSON.parse(buf.toString("utf8", 0, n).split("\n")[0]);
+    return header?.type === "session" && typeof header.cwd === "string" && header.cwd ? header.cwd : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

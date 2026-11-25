@@ -73,8 +73,10 @@ function resultText(result: unknown): string {
  * The child runs in its own context window and returns ONLY its final assistant
  * text to the caller. It is spawned with `PI_SUBAGENT=1` so the subagent tool is
  * never registered inside a subagent (no recursion). It runs in `--mode json`
- * with the standard global config, which loads pi-sandbox automatically so the
- * child sandboxes itself (deny-by-default: no UI to prompt).
+ * in `opts.cwd`, with the standard global config, which loads the sandbox
+ * extension so the child sandboxes itself (deny-by-default: no UI to prompt).
+ * The copied environment carries PI_SANDBOX_INHERIT, the parent's policy at
+ * spawn time, so the child gets the parent's access and session grants.
  */
 export async function runSubagent(
   opts: RunOptions,

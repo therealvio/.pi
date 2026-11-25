@@ -35,6 +35,22 @@
  * Config (merged; project overrides global):
  *   ~/.pi/agent/sandbox.json   (global)
  *   <cwd>/.pi/sandbox.json     (project)
+ * <cwd> is the session's directory. On session_start this extension chdirs
+ * there, so "." and other relative paths in the config resolve against it.
+ *
+ * In-process read gates allow a path in allowRead, or in allowWrite and not
+ * in denyRead. The OS sandbox gets allowRead only.
+ *
+ * Subagents: this extension writes the effective policy (allow and deny
+ * lists, session grants and session denials, all as full paths) to
+ * process.env.PI_SANDBOX_INHERIT, and keeps it current. A subagent child
+ * (PI_SUBAGENT=1) copies the parent's environment and reads that policy:
+ *   - its allow lists are the parent's lists, not its own config's, so a
+ *     subagent in another directory gets no access the parent does not have;
+ *   - its deny lists are the parent's lists plus its own config's;
+ *   - the parent's session denials stay denied;
+ *   - it reads the project config of the parent's directory, not of its own.
+ * When the variable is missing or malformed, the child uses its own config.
  *
  * Adapted from github.com/jay-aye-see-kay/.pi (agent/extensions/sandbox).
  * Unlike that version, this one does not patch the library. Its mandatory
@@ -106,6 +122,54 @@ function readJson(path: string): Partial<SandboxConfig> {
 	}
 }
 
+/**
+ * Policy a parent session passes to its subagents in PI_SANDBOX_INHERIT.
+ * Paths are full paths, except globs with no "/" (name patterns like *.key).
+ */
+interface InheritedPolicy {
+	cwd: string;
+	allowRead: string[];
+	allowWrite: string[];
+	denyRead: string[];
+	denyWrite: string[];
+	allowedDomains: string[];
+	deniedRead: string[];
+	deniedWrite: string[];
+	deniedDomains: string[];
+}
+
+const INHERIT_ENV = "PI_SANDBOX_INHERIT";
+
+/** The parent's policy when this process is a subagent, else null. Malformed data gives null. */
+function readInheritedPolicy(): InheritedPolicy | null {
+	if (process.env.PI_SUBAGENT !== "1") return null;
+	const raw = process.env[INHERIT_ENV];
+	if (!raw) return null;
+	try {
+		const o = JSON.parse(raw) as Record<string, unknown>;
+		const list = (k: string): string[] => {
+			const v = o[k];
+			if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) throw new Error(`bad ${k}`);
+			return v;
+		};
+		if (typeof o.cwd !== "string" || !o.cwd.startsWith("/")) throw new Error("bad cwd");
+		return {
+			cwd: o.cwd,
+			allowRead: list("allowRead"),
+			allowWrite: list("allowWrite"),
+			denyRead: list("denyRead"),
+			denyWrite: list("denyWrite"),
+			allowedDomains: list("allowedDomains"),
+			deniedRead: list("deniedRead"),
+			deniedWrite: list("deniedWrite"),
+			deniedDomains: list("deniedDomains"),
+		};
+	} catch (e) {
+		console.error(`sandbox: ignoring malformed ${INHERIT_ENV}: ${e}`);
+		return null;
+	}
+}
+
 function configPaths(cwd: string): { globalPath: string; projectPath: string } {
 	return { globalPath: join(getAgentDir(), "sandbox.json"), projectPath: join(cwd, ".pi", "sandbox.json") };
 }
@@ -150,6 +214,12 @@ function canonicalizePath(p: string): string {
 			return abs;
 		}
 	}
+}
+
+/** `p` as a full path. A glob with no "/" is a name pattern and stays as it is. */
+function absolutePattern(p: string): string {
+	if (p.includes("*")) return p.includes("/") ? expandPath(p) : p;
+	return canonicalizePath(p);
 }
 
 function matchesPattern(filePath: string, patterns: string[]): boolean {
@@ -427,9 +497,53 @@ export default function (pi: ExtensionAPI) {
 	const sessionDeniedRead = new Set<string>();
 	const sessionDeniedWrite = new Set<string>();
 
-	const effAllowedDomains = () => [...(loadConfig(cwd).network?.allowedDomains ?? []), ...sessionDomains];
-	const effAllowRead = () => [...(loadConfig(cwd).filesystem?.allowRead ?? []), ...sessionRead];
-	const effAllowWrite = () => [...(loadConfig(cwd).filesystem?.allowWrite ?? []), ...sessionWrite];
+	// Set only in a subagent: the parent's policy. It replaces the allow lists
+	// of this process's config, so a subagent started in another directory
+	// does not get that directory through ".".
+	const inherited = readInheritedPolicy();
+	if (inherited) {
+		for (const p of inherited.deniedRead) sessionDeniedRead.add(p);
+		for (const p of inherited.deniedWrite) sessionDeniedWrite.add(p);
+		for (const d of inherited.deniedDomains) sessionDeniedDomains.add(d);
+	}
+	// Directory whose .pi/sandbox.json applies. A subagent uses its parent's,
+	// so a repo's own project config cannot widen or turn off the sandbox.
+	const configDir = () => inherited?.cwd ?? cwd;
+	const config = () => loadConfig(configDir());
+
+	const effAllowedDomains = () => [...(inherited?.allowedDomains ?? config().network?.allowedDomains ?? []), ...sessionDomains];
+	const effAllowRead = () => [...(inherited?.allowRead ?? config().filesystem?.allowRead ?? []), ...sessionRead];
+	const effAllowWrite = () => [...(inherited?.allowWrite ?? config().filesystem?.allowWrite ?? []), ...sessionWrite];
+	const effDenyRead = () => [...(config().filesystem?.denyRead ?? []), ...(inherited?.denyRead ?? [])];
+	const effDenyWrite = () => [...(config().filesystem?.denyWrite ?? []), ...(inherited?.denyWrite ?? [])];
+	/**
+	 * In-process read gate. A writable path is readable too, unless a targeted
+	 * denyRead entry (see targetedReadDenies) covers it. The OS sandbox does
+	 * not get this rule: its allowRead stays as configured.
+	 */
+	const readAllowed = (path: string) =>
+		matchesPattern(path, effAllowRead()) || (matchesPattern(path, effAllowWrite()) && !matchesPattern(path, targetedReadDenies()));
+
+	/**
+	 * Write the effective policy to process.env for subagents. A child copies
+	 * the parent's environment when it starts, so it gets the policy of that
+	 * moment. Call this after every change to the policy or the session sets.
+	 */
+	function publishPolicy(): void {
+		const fs = fsPolicy();
+		const policy: InheritedPolicy = {
+			cwd: configDir(),
+			allowRead: fs.allowRead.map(absolutePattern),
+			allowWrite: fs.allowWrite.map(absolutePattern),
+			denyRead: fs.denyRead.map(absolutePattern),
+			denyWrite: fs.denyWrite.map(absolutePattern),
+			allowedDomains: effAllowedDomains(),
+			deniedRead: [...sessionDeniedRead],
+			deniedWrite: [...sessionDeniedWrite],
+			deniedDomains: [...sessionDeniedDomains],
+		};
+		process.env[INHERIT_ENV] = JSON.stringify(policy);
+	}
 
 	// ── Serial prompt queue (network asks can fire concurrently mid-execution) ──
 	let queue: Promise<unknown> = Promise.resolve();
@@ -496,7 +610,7 @@ export default function (pi: ExtensionAPI) {
 
 	async function applyGrant(kind: "domain" | "read" | "write", value: string, grant: Grant): Promise<void> {
 		if (!isAllow(grant)) return;
-		const { globalPath, projectPath } = configPaths(cwd);
+		const { globalPath, projectPath } = configPaths(configDir());
 		const section = kind === "domain" ? "network" : "filesystem";
 		const key = kind === "domain" ? "allowedDomains" : kind === "read" ? "allowRead" : "allowWrite";
 		if (kind === "domain") sessionDomains.add(value);
@@ -504,20 +618,34 @@ export default function (pi: ExtensionAPI) {
 		else if (!sessionWrite.includes(value)) sessionWrite.push(value);
 		if (grant === "project") addToConfigList(projectPath, section, key, value);
 		if (grant === "global") addToConfigList(globalPath, section, key, value);
+		publishPolicy();
 		// Push new fs paths into the running OS sandbox so the next bash command
 		// sees them. Network grants are served by the ask callback, so no update needed.
 		if (kind !== "domain" && sandboxOn) updateSandboxConfig();
 	}
 
 	// ── Sandbox init ──────────────────────────────────────────────────────────
-	function runtimeConfig() {
-		const cfg = loadConfig(cwd);
+	/** Filesystem lists for the OS sandbox, and for subagents. */
+	function fsPolicy() {
+		const cfg = config();
 		// In a linked worktree, git writes objects and refs to the main repo's
 		// .git, which is outside cwd. Allow it, but deny its hooks (and config,
 		// unless allowGitConfig): the library only denies those beneath cwd.
+		// A subagent does not add the write allow: it gets the parent's
+		// allowWrite, which has the parent's git directory already.
 		const gitDir = sharedGitDir(cwd);
-		const gitAllowWrite = gitDir ? [gitDir] : [];
+		const gitAllowWrite = gitDir && !inherited ? [gitDir] : [];
 		const gitDenyWrite = gitDir ? [join(gitDir, "hooks"), ...(cfg.filesystem?.allowGitConfig ? [] : [join(gitDir, "config")])] : [];
+		return {
+			denyRead: effDenyRead(),
+			allowRead: effAllowRead(),
+			allowWrite: [...effAllowWrite(), ...gitAllowWrite],
+			denyWrite: [...effDenyWrite(), ...gitDenyWrite],
+		};
+	}
+
+	function runtimeConfig() {
+		const cfg = config();
 		return {
 			enableWeakerNetworkIsolation: cfg.enableWeakerNetworkIsolation,
 			ignoreViolations: cfg.ignoreViolations,
@@ -530,10 +658,7 @@ export default function (pi: ExtensionAPI) {
 				allowMachLookup: cfg.network?.allowMachLookup,
 			},
 			filesystem: {
-				denyRead: cfg.filesystem?.denyRead ?? [],
-				allowRead: effAllowRead(),
-				allowWrite: [...effAllowWrite(), ...gitAllowWrite],
-				denyWrite: [...(cfg.filesystem?.denyWrite ?? []), ...gitDenyWrite],
+				...fsPolicy(),
 				allowGitConfig: cfg.filesystem?.allowGitConfig,
 			},
 		};
@@ -554,6 +679,7 @@ export default function (pi: ExtensionAPI) {
 				// Remember for the session: chatty endpoints (analytics, telemetry) retry
 				// constantly and the library asks on every connection.
 				sessionDeniedDomains.add(host);
+				publishPolicy();
 				return false;
 			}
 			// Dismissed: fail this connection only, so a stray ESC can't blackhole a
@@ -631,24 +757,23 @@ export default function (pi: ExtensionAPI) {
 			if (mode !== "sandbox" || !sandboxOn) return reply("The OS sandbox is not active; no grant is needed. The failure has another cause.", false);
 			const kind = params.access;
 			const path = canonicalizePath(params.path);
-			const cfg = loadConfig(cwd);
-			if (kind === "write" && matchesPattern(path, cfg.filesystem?.denyWrite ?? [])) {
+			if (kind === "write" && matchesPattern(path, effDenyWrite())) {
 				return reply(`Refused: "${path}" is in the sandbox denyWrite list. Do not retry; tell the user if you need it.`, false);
 			}
 			if (kind === "read" && matchesPattern(path, targetedReadDenies())) {
 				return reply(`Refused: "${path}" is in the sandbox denyRead list. Do not retry; tell the user if you need it.`, false);
 			}
-			if (isStale({ kind, path }) || matchesPattern(path, kind === "read" ? effAllowRead() : effAllowWrite())) {
+			if (isStale({ kind, path }) || (kind === "read" ? readAllowed(path) : matchesPattern(path, effAllowWrite()))) {
 				return reply(`"${path}" is already allowed for ${kind}. If the command still fails, the block is something else (e.g. a denied parent/child path, process-exec, or network).`, true);
 			}
 			const denied = kind === "read" ? sessionDeniedRead : sessionDeniedWrite;
 			if (denied.has(path)) return reply(`Denied: the user already denied ${kind} access to "${path}" this session. Do not ask again.`, false);
 			if (!ctx?.hasUI) return reply(`Denied: no UI available to ask the user for ${kind} access to "${path}".`, false);
 			const grant = await enqueue(async (): Promise<Grant | "already"> => {
-				if (matchesPattern(path, kind === "read" ? effAllowRead() : effAllowWrite())) return "already"; // granted while queued
+				if (kind === "read" ? readAllowed(path) : matchesPattern(path, effAllowWrite())) return "already"; // granted while queued
 				const icon = kind === "read" ? "📖" : "📝";
 				const g = await promptGrant(ctx, `${icon} Agent requests ${kind} access to "${path}"\n   Reason: ${params.reason}`);
-				if (g === "deny") denied.add(path);
+				if (g === "deny") { denied.add(path); publishPolicy(); }
 				if (isAllow(g)) await applyGrant(kind, path, g);
 				return g;
 			});
@@ -670,7 +795,7 @@ export default function (pi: ExtensionAPI) {
 			// bwrap can't enforce globs: the library drops glob allow/deny entries on Linux.
 			const literal = (ps: string[]) => ps.filter((p) => !p.includes("*"));
 			if (b.kind === "read") return matchesPattern(b.path, literal(effAllowRead()));
-			return matchesPattern(b.path, literal(effAllowWrite())) && !matchesPattern(b.path, literal(loadConfig(cwd).filesystem?.denyWrite ?? []));
+			return matchesPattern(b.path, literal(effAllowWrite())) && !matchesPattern(b.path, literal(effDenyWrite()));
 		}
 		return (b.kind === "read" ? sessionRead : sessionWrite).includes(b.path);
 	}
@@ -684,7 +809,7 @@ export default function (pi: ExtensionAPI) {
 	 */
 	function targetedReadDenies(): string[] {
 		const broad = new Set([canonicalizePath(homedir()), "/"]);
-		return (loadConfig(cwd).filesystem?.denyRead ?? []).filter((p) => !broad.has(canonicalizePath(p)));
+		return effDenyRead().filter((p) => !broad.has(canonicalizePath(p)));
 	}
 
 
@@ -703,20 +828,19 @@ export default function (pi: ExtensionAPI) {
 
 		if (isToolCallEventType("read", event)) {
 			const path = canonicalizePath(event.input.path);
-			if (matchesPattern(path, effAllowRead())) return;
+			if (readAllowed(path)) return;
 			return gateTool(ctx, "read", path);
 		}
 
 		if (artifactPath) {
 			const path = canonicalizePath(artifactPath);
-			if (matchesPattern(path, effAllowRead())) return;
+			if (readAllowed(path)) return;
 			return gateTool(ctx, "read", path);
 		}
 
 		if (isToolCallEventType("write", event) || isToolCallEventType("edit", event)) {
 			const path = canonicalizePath((event.input as { path: string }).path);
-			const cfg = loadConfig(cwd);
-			if (matchesPattern(path, cfg.filesystem?.denyWrite ?? [])) {
+			if (matchesPattern(path, effDenyWrite())) {
 				return { block: true, reason: `Sandbox: write denied for "${path}" (in denyWrite)` };
 			}
 			if (matchesPattern(path, effAllowWrite())) return;
@@ -783,7 +907,7 @@ export default function (pi: ExtensionAPI) {
 	/** Read gate for a path a ctx tool reads in-process or hands to its code. */
 	function gateCtxRead(path: string, ctx: ExtensionContext): Promise<{ block: true; reason: string } | undefined> | undefined {
 		const p = canonicalizePath(resolve(cwd, path));
-		if (matchesPattern(p, effAllowRead())) return undefined;
+		if (readAllowed(p)) return undefined;
 		return gateTool(ctx, "read", p);
 	}
 
@@ -826,7 +950,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		// Only the first host is checked: context-mode follows redirects
 		// in-process, out of reach of this hook.
-		if (domainAllowed(host, loadConfig(cwd).network?.deniedDomains ?? [])) {
+		if (domainAllowed(host, config().network?.deniedDomains ?? [])) {
 			return { block: true, reason: `Sandbox: fetch denied for "${host}" (in deniedDomains)` };
 		}
 		if (await askNetwork({ host, port: undefined })) return undefined;
@@ -848,13 +972,13 @@ export default function (pi: ExtensionAPI) {
 
 	/** Prompt for an in-process read/write, serialised with all other grant prompts. */
 	async function gateTool(ctx: ExtensionContext, kind: "read" | "write", path: string): Promise<{ block: true; reason: string } | undefined> {
-		const allow = kind === "read" ? effAllowRead : effAllowWrite;
+		const allowed = kind === "read" ? readAllowed : (p: string) => matchesPattern(p, effAllowWrite());
 		const denied = kind === "read" ? sessionDeniedRead : sessionDeniedWrite;
 		return enqueue(async () => {
-			if (matchesPattern(path, allow())) return undefined; // granted while queued
+			if (allowed(path)) return undefined; // granted while queued
 			if (denied.has(path)) return { block: true as const, reason: `Sandbox: ${kind} denied for "${path}" (denied for this session)` };
 			const grant = await promptGrant(ctx, kind === "read" ? `📖 Allow read of "${path}"?` : `📝 Allow write to "${path}"?`);
-			if (grant === "deny") denied.add(path);
+			if (grant === "deny") { denied.add(path); publishPolicy(); }
 			if (!isAllow(grant)) return { block: true as const, reason: `Sandbox: ${kind} denied for "${path}"` };
 			await applyGrant(kind, path, grant);
 			return undefined;
@@ -895,7 +1019,8 @@ export default function (pi: ExtensionAPI) {
 		cwd = ctx.cwd;
 		shellCommandPrefix = SettingsManager.create(cwd, getAgentDir()).getShellCommandPrefix();
 		localBash = createBashTool(cwd, { commandPrefix: shellCommandPrefix });
-		const cfg = loadConfig(cwd);
+		publishPolicy();
+		const cfg = config();
 		mode = cfg.mode ?? "sandbox";
 
 		if (cfg.enabled === false) {
@@ -934,7 +1059,7 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("warning", "🛡️ Sandbox mode (inactive)"));
 			return;
 		}
-		const cfg = loadConfig(cwd);
+		const cfg = config();
 		const n = cfg.network?.allowedDomains?.length ?? 0;
 		const w = cfg.filesystem?.allowWrite?.length ?? 0;
 		ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", `🛡️ Sandbox: ${n} domains, ${w} write paths`));
@@ -971,10 +1096,11 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function showConfig(ctx: ExtensionContext): void {
-		const cfg = loadConfig(cwd);
-		const { globalPath, projectPath } = configPaths(cwd);
+		const cfg = config();
+		const { globalPath, projectPath } = configPaths(configDir());
 		const lines = [
 			`Sandbox mode: ${mode}${mode === "sandbox" && !sandboxOn ? " (inactive)" : ""}`,
+			...(inherited ? [`  Subagent: allow lists come from the parent session (${inherited.cwd})`] : []),
 			"  Switch: /sandbox enable | /sandbox prompt",
 			`  Global config:  ${globalPath}`,
 			`  Project config: ${projectPath}`,

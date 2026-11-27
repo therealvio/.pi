@@ -8,7 +8,7 @@ import type { SessionTotals, SubStats, ToolCall } from "./types";
 /** Strip the provider prefix from a model id: "github-copilot/claude-sonnet-4.6" → "claude-sonnet-4.6". */
 export const shortModel = (id: string): string => id.split("/").pop() ?? id;
 
-export const clip = (s: string, n: number): string => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
+export const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}\u2026` : s);
 
 export const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
@@ -73,7 +73,7 @@ function themedHeader(theme: Theme, d: SubStats): string {
 function callLines(theme: Theme, calls: ToolCall[]): string[] {
   return calls.map((c) => {
     const name = theme.fg("accent", c.tool);
-    const summary = c.summary ? " " + theme.fg("toolOutput", clip(c.summary, 100)) : "";
+    const summary = c.summary ? ` ${theme.fg("toolOutput", clip(c.summary, 100))}` : "";
     return `  ${theme.fg("dim", "\u203a")} ${name}${summary}`;
   });
 }
@@ -85,13 +85,13 @@ export function renderCall(
 ): Text {
   let head = theme.fg("toolTitle", theme.bold("subagent"));
   const resume = (args.resume ?? "").trim();
-  if (resume) head += " " + theme.fg("accent", `\u21bb ${resume}`);
+  if (resume) head += ` ${theme.fg("accent", `\u21bb ${resume}`)}`;
   const model = (args.model ?? "").trim() || defaultModel;
-  head += " " + theme.fg("muted", shortModel(model));
+  head += ` ${theme.fg("muted", shortModel(model))}`;
   const cwd = (args.cwd ?? "").trim();
-  if (cwd) head += " " + theme.fg("accent", `@ ${clip(cwd, 60)}`);
+  if (cwd) head += ` ${theme.fg("accent", `@ ${clip(cwd, 60)}`)}`;
   const goal = (args.goal ?? "").trim().split("\n")[0];
-  if (goal) head += " " + theme.fg("dim", clip(goal, 160));
+  if (goal) head += ` ${theme.fg("dim", clip(goal, 160))}`;
   return new Text(head, 0, 0);
 }
 

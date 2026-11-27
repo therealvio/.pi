@@ -1052,17 +1052,16 @@ export default function (pi: ExtensionAPI) {
 	// ── mode switching ────────────────────────────────────────────────────────
 	function setModeStatus(ctx: ExtensionContext): void {
 		if (mode === "prompt") {
-			ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("warning", "🔓 Prompt mode: every read/edit/bash asks"));
+			ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("warning", "🔓"));
 			return;
 		}
+		// Init failed or is not done: sandbox mode is selected but bash is not wrapped.
 		if (!sandboxOn) {
-			ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("warning", "🛡️ Sandbox mode (inactive)"));
+			ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("error", "🛡️ inactive"));
 			return;
 		}
-		const cfg = config();
-		const n = cfg.network?.allowedDomains?.length ?? 0;
-		const w = cfg.filesystem?.allowWrite?.length ?? 0;
-		ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", `🛡️ Sandbox: ${n} domains, ${w} write paths`));
+		// Only the state goes in the footer; /sandbox shows the policy.
+		ctx.ui.setStatus("sandbox", ctx.ui.theme.fg("accent", "🛡️"));
 	}
 
 	async function enterSandboxMode(ctx: ExtensionContext): Promise<void> {

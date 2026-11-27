@@ -170,6 +170,20 @@ function readInheritedPolicy(): InheritedPolicy | null {
 	}
 }
 
+/**
+ * Keys for "ext.sandbox.toggle" in ~/.pi/agent/keybindings.json, a string or
+ * a string array. Pi only knows app.* and tui.* ids, so the extension reads it.
+ */
+function toggleKeyIds(): string[] {
+	try {
+		const value = JSON.parse(readFileSync(join(getAgentDir(), "keybindings.json"), "utf-8"))?.["ext.sandbox.toggle"];
+		const keys = typeof value === "string" ? [value] : value;
+		return Array.isArray(keys) ? [...new Set(keys.filter((k): k is string => typeof k === "string"))] : [];
+	} catch {
+		return [];
+	}
+}
+
 function configPaths(cwd: string): { globalPath: string; projectPath: string } {
 	return { globalPath: join(getAgentDir(), "sandbox.json"), projectPath: join(cwd, ".pi", "sandbox.json") };
 }
@@ -472,6 +486,8 @@ type Grant = "session" | "project" | "global" | "deny" | "cancel";
 const isAllow = (g: Grant): g is "session" | "project" | "global" => g === "session" || g === "project" || g === "global";
 
 export default function (pi: ExtensionAPI) {
+	const toggleKeys = toggleKeyIds();
+	const toggleHint = toggleKeys.length ? ` (${toggleKeys.join(", ")})` : "";
 	// The session's directory. Pi does not chdir when a session moves to another
 	// directory (e.g. pi-worktrunk's /wt switch), so session_start resets this
 	// from ctx.cwd. Do not read process.cwd() elsewhere in this extension.
@@ -1100,7 +1116,7 @@ export default function (pi: ExtensionAPI) {
 		const lines = [
 			`Sandbox mode: ${mode}${mode === "sandbox" && !sandboxOn ? " (inactive)" : ""}`,
 			...(inherited ? [`  Subagent: allow lists come from the parent session (${inherited.cwd})`] : []),
-			"  Switch: /sandbox enable | /sandbox prompt",
+			`  Switch: /sandbox enable | /sandbox prompt | /sandbox toggle${toggleHint}`,
 			`  Global config:  ${globalPath}`,
 			`  Project config: ${projectPath}`,
 			"",
@@ -1125,14 +1141,36 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.notify(lines.join("\n"), "info");
 	}
 
+	// ── toggle key ──────────────────────────────────────────────────────────────
+	/**
+	 * Switches between sandbox and prompt mode. There is no "off": with
+	 * enabled: false in the config this extension does nothing, so the toggle
+	 * refuses instead of turning protection on half way.
+	 */
+	async function toggleMode(ctx: ExtensionContext): Promise<void> {
+		if (config().enabled === false) {
+			ctx.ui.notify("Sandbox disabled via config; toggle does nothing", "warning");
+			return;
+		}
+		return mode === "prompt" ? enterSandboxMode(ctx) : enterPromptMode(ctx);
+	}
+
+	for (const key of toggleKeys) {
+		pi.registerShortcut(key as Parameters<ExtensionAPI["registerShortcut"]>[0], {
+			description: "Toggle sandbox mode / prompt mode",
+			handler: async (ctx) => toggleMode(ctx),
+		});
+	}
+
 	// ── /sandbox ────────────────────────────────────────────────────────────────
 	pi.registerCommand("sandbox", {
-		description: "Show config or switch mode: /sandbox [show|enable|prompt]",
+		description: "Show config or switch mode: /sandbox [show|enable|prompt|toggle]",
 		getArgumentCompletions: (prefix) => {
 			const subs = [
 				{ value: "show", label: "show", description: "Show current sandbox config" },
 				{ value: "enable", label: "enable", description: "Switch to OS sandbox mode" },
 				{ value: "prompt", label: "prompt", description: "Switch to prompt-everything mode" },
+				{ value: "toggle", label: "toggle", description: "Switch between sandbox and prompt mode" },
 			];
 			const filtered = subs.filter((s) => s.value.startsWith(prefix.trim().toLowerCase()));
 			return filtered.length > 0 ? filtered : null;
@@ -1141,6 +1179,7 @@ export default function (pi: ExtensionAPI) {
 			const sub = (args ?? "").trim().toLowerCase();
 			if (sub === "enable" || sub === "sandbox") return enterSandboxMode(ctx);
 			if (sub === "prompt") return enterPromptMode(ctx);
+			if (sub === "toggle") return toggleMode(ctx);
 			showConfig(ctx);
 		},
 	});

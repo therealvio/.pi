@@ -486,6 +486,19 @@ export default function planMode(pi: ExtensionAPI) {
 
   pi.registerCommand("plan", {
     description: "Plan mode: /plan (toggle) · /plan <name> (load existing or create new) · /plan off",
+    // "off", then the saved plans in .pi/plans by name. Any other name creates a new plan.
+    getArgumentCompletions: (prefix) => {
+      const typed = prefix.trim().toLowerCase();
+      const options = [
+        { value: "off", label: "off", description: "Turn plan mode off and restore all tools" },
+        ...listPlanFiles().map((f) => {
+          const name = f.name.slice(PLAN_FILE_PREFIX.length, -".md".length);
+          return { value: name, label: name, description: `Load plan: ${f.title}` };
+        }),
+      ];
+      const matches = options.filter((o) => o.value.toLowerCase().startsWith(typed));
+      return matches.length > 0 ? matches : null;
+    },
     handler: async (args: string, ctx) => {
       const input = args.trim();
 

@@ -201,7 +201,19 @@ export default function noSleepExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("no-sleep", {
-    description: "Show or change macOS sleep-prevention status",
+    description: "Show or change sleep prevention: /no-sleep [status|on|off|toggle|agent|session]",
+    getArgumentCompletions: (prefix) => {
+      const options = [
+        { value: "status", label: "status", description: "Show whether sleep is blocked, and why" },
+        { value: "on", label: "on", description: "Enable sleep prevention" },
+        { value: "off", label: "off", description: "Disable sleep prevention" },
+        { value: "toggle", label: "toggle", description: "Switch sleep prevention on or off" },
+        { value: "agent", label: "agent", description: "Block sleep only while the agent works" },
+        { value: "session", label: "session", description: "Block sleep for the whole session" },
+      ];
+      const matches = options.filter((o) => o.value.startsWith(prefix.trim().toLowerCase()));
+      return matches.length > 0 ? matches : null;
+    },
     handler: async (args, ctx) => {
       const command = args.trim().toLowerCase();
 

@@ -6,9 +6,10 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import type { SessionTotals, SubStats } from "./types";
+import type { RunRecord, SessionTotals, SubStats } from "./types";
 import { readKeepDays, readSubagentModels } from "./config";
 import { BLOCKED_RE, buildPrompt, runSubagent, SESSION_ID_RE } from "./runner";
+import { openStatusPanel } from "./panel";
 import { findSessionDir, openSubagentPicker, pruneSessions, sessionCwd } from "./sessions";
 import {
   clip,
@@ -73,6 +74,7 @@ import {
  *   - types.ts     — shared telemetry / option types
  *   - runner.ts    — spawn the child `pi`, parse its JSON event stream
  *   - render.ts    — turn stats into TUI widgets (all theme logic lives here)
+ *   - panel.ts     — the /subagent status overlay
  *   - sessions.ts  — subagent session dir plumbing + the browse/resume picker
  *   - index.ts     — wire it together and register the tool
  */
@@ -110,6 +112,52 @@ export default function (pi: ExtensionAPI) {
   let totals: SessionTotals = { count: 0, cost: 0, turns: 0 };
 
   const isEnabled = (): boolean => pi.getActiveTools().includes(toolName);
+  const statusKeys = readKeys("ext.subagent.status");
+
+  // Runs in this session, keyed by tool call id, for the status panel.
+  // session_start rebuilds them from the session, so /reload keeps them.
+  const runs = new Map<string, RunRecord>();
+  const panelListeners = new Set<() => void>();
+  const runsChanged = (): void => {
+    for (const fn of panelListeners) fn();
+  };
+
+  const rebuildRuns = (ctx: ExtensionContext): void => {
+    runs.clear();
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry?.type !== "message") continue;
+      const msg = entry.message as {
+        role?: string;
+        content?: unknown;
+        toolCallId?: string;
+        toolName?: string;
+        details?: unknown;
+        isError?: boolean;
+      };
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        for (const part of msg.content as { type?: string; id?: string; name?: string; arguments?: Record<string, unknown> }[]) {
+          if (part?.type !== "toolCall" || part.name !== toolName || !part.id) continue;
+          const args = part.arguments ?? {};
+          runs.set(part.id, {
+            sessionId: typeof args.resume === "string" && args.resume ? args.resume : "sub-?",
+            model: typeof args.model === "string" && args.model ? args.model : defaultModel,
+            goal: typeof args.goal === "string" ? args.goal : "",
+            ...(typeof args.cwd === "string" && args.cwd ? { cwd: args.cwd } : {}),
+            // No result yet: the run was cut off, e.g. by a reload mid-run.
+            state: "aborted",
+          });
+        }
+      } else if (msg.role === "toolResult" && msg.toolName === toolName && msg.toolCallId) {
+        const run = runs.get(msg.toolCallId);
+        const d = msg.details as SubStats | undefined;
+        if (!run || !d || typeof d !== "object") continue;
+        run.stats = { ...d, calls: Array.isArray(d.calls) ? d.calls : [], denials: Array.isArray(d.denials) ? d.denials : [] };
+        if (d.sessionId) run.sessionId = d.sessionId;
+        run.state = runState(d, Boolean(msg.isError));
+      }
+    }
+    runsChanged();
+  };
 
   const updateStatus = (ctx: ExtensionContext, running = false, shownTotals = totals): void => {
     ctx.ui.setStatus("subagents", footerStatus(shownTotals, running, isEnabled()));
@@ -155,13 +203,33 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     totals = { count: 0, cost: 0, turns: 0 };
     restoreState(ctx);
+    rebuildRuns(ctx);
     const keepDays = readKeepDays();
     if (!pruned && keepDays) {
       pruned = true;
       pruneSessions(sessionDir, keepDays);
     }
   });
-  pi.on("session_tree", (_event, ctx) => restoreState(ctx));
+  pi.on("session_tree", (_event, ctx) => {
+    restoreState(ctx);
+    rebuildRuns(ctx);
+  });
+
+  const showStatus = async (ctx: ExtensionContext): Promise<void> => {
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify(`Subagent tool ${isEnabled() ? "enabled" : "disabled"}`, "info");
+      return;
+    }
+    await openStatusPanel(
+      ctx,
+      () => ({ enabled: isEnabled(), defaultModel, runs: [...runs.values()] }),
+      (fn) => {
+        panelListeners.add(fn);
+        return () => panelListeners.delete(fn);
+      },
+      statusKeys,
+    );
+  };
 
   pi.registerCommand("subagent", {
     description: "Enable, disable, or show the subagent tool",
@@ -183,21 +251,31 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      if (next !== undefined) setEnabled(next, ctx);
-      else updateStatus(ctx);
+      if (next === undefined) return showStatus(ctx);
+      setEnabled(next, ctx);
+      runsChanged();
       ctx.ui.notify(`Subagent tool ${isEnabled() ? "enabled" : "disabled"}`, "info");
     },
   });
 
   // Optional toggle key: "ext.subagent.toggle" in keybindings.json, a string
   // or a string array. No binding = no shortcut; /subagent still works.
-  for (const key of readToggleKeys()) {
+  for (const key of readKeys("ext.subagent.toggle")) {
     pi.registerShortcut(key as Parameters<ExtensionAPI["registerShortcut"]>[0], {
       description: "Toggle the subagent tool",
       handler: async (ctx) => {
         setEnabled(!isEnabled(), ctx);
+        runsChanged();
         ctx.ui.notify(`Subagent tool ${isEnabled() ? "enabled" : "disabled"}`, "info");
       },
+    });
+  }
+
+  // Optional key for the status panel: "ext.subagent.status", same format.
+  for (const key of statusKeys) {
+    pi.registerShortcut(key as Parameters<ExtensionAPI["registerShortcut"]>[0], {
+      description: "Show subagent mode, runs, models and costs",
+      handler: async (ctx) => showStatus(ctx),
     });
   }
 
@@ -256,7 +334,7 @@ Key rule: resume to get information not to do work.`,
       ),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       // Resolve (and validate) the session: resume an existing one or mint a new id.
       // New subagents go under the current parent session's subdir; a resumed
       // subagent stays in whichever parent subdir originally created it.
@@ -294,6 +372,10 @@ Key rule: resume to get information not to do work.`,
         return failure(`cwd '${cwdArg}' is not an existing directory.`, { cwd: cwdArg });
       }
 
+      const run: RunRecord = { sessionId, model, goal: params.goal, cwd, state: "running" };
+      runs.set(toolCallId, run);
+      runsChanged();
+
       const outcome = await runSubagent(
         {
           sessionId,
@@ -307,6 +389,8 @@ Key rule: resume to get information not to do work.`,
         // Live telemetry → inline tool block (drawn by renderResult with isPartial).
         (stats) => {
           onUpdate?.({ content: [{ type: "text", text: plainTelemetry(stats) }], details: stats });
+          run.stats = stats;
+          runsChanged();
           // Show a live footer indicator while the subagent is running.
           updateStatus(
             ctx,
@@ -322,6 +406,9 @@ Key rule: resume to get information not to do work.`,
 
       const { finalText, exitCode } = outcome;
       const stats: SubStats = { ...outcome.stats, ...blockInfo(finalText, outcome.stats.denials) };
+      run.stats = stats;
+      run.state = outcome.aborted ? "aborted" : runState(stats, Boolean(outcome.spawnError) || (exitCode !== 0 && !finalText));
+      runsChanged();
       if (stats.blocked) {
         // Tell the user directly too, in case the main agent buries it.
         ctx.ui.notify(`Subagent ${sessionId} blocked: ${stats.blockedReason}`, "warning");
@@ -395,11 +482,18 @@ function resolveDir(base: string, dir: string): string | null {
   }
 }
 
-/** Keys bound to "ext.subagent.toggle" in keybindings.json, or none. */
-function readToggleKeys(): string[] {
+/** Panel state of a finished run. An abort shows up as error "aborted". */
+function runState(stats: SubStats, isError: boolean): RunRecord["state"] {
+  if (stats.error === "aborted") return "aborted";
+  if (stats.blocked) return "blocked";
+  return isError || stats.error ? "failed" : "done";
+}
+
+/** Keys bound to `action` in keybindings.json, or none. */
+function readKeys(action: string): string[] {
   try {
     const config = JSON.parse(readFileSync(join(getAgentDir(), "keybindings.json"), "utf8"));
-    const keys = config?.["ext.subagent.toggle"];
+    const keys = config?.[action];
     if (typeof keys === "string") return [keys];
     return Array.isArray(keys) ? [...new Set(keys.filter((k): k is string => typeof k === "string"))] : [];
   } catch {

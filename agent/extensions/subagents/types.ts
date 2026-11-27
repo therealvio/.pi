@@ -48,6 +48,17 @@ export interface SubStats {
   blockedReason?: string;
 }
 
+/** One subagent call in this session, for the /subagent status panel. */
+export interface RunRecord {
+  sessionId: string;
+  model: string;
+  goal: string;
+  cwd?: string;
+  state: "running" | "done" | "failed" | "aborted" | "blocked";
+  /** Last live or final telemetry. Absent until the first update arrives. */
+  stats?: SubStats;
+}
+
 /** Totals accumulated across all subagent calls in the current session. */
 export interface SessionTotals {
   count: number;

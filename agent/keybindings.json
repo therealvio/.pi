@@ -4,6 +4,7 @@
   "ext.lens-panel.open": "ctrl+shift+e",
   "ext.sandbox.toggle": "ctrl+shift+b",
   "ext.snippets.expand": "ctrl+j",
+  "ext.subagent.status": "ctrl+shift+a",
   "ext.stash.swap": "alt+shift+up",
   "tui.input.newLine": [
     "shift+enter"

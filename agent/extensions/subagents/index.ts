@@ -232,12 +232,15 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.registerCommand("subagent", {
-    description: "Enable, disable, or show the subagent tool",
+    description: "Show status or switch the tool: /subagent [status|on|off|toggle]",
     getArgumentCompletions: (prefix) => {
-      const options = ["on", "off", "toggle", "status"];
-      const matches = options
-        .filter((option) => option.startsWith(prefix.toLowerCase()))
-        .map((option) => ({ value: option, label: option }));
+      const options = [
+        { value: "status", label: "status", description: "Show mode, runs, models and costs" },
+        { value: "on", label: "on", description: "Enable the subagent tool" },
+        { value: "off", label: "off", description: "Disable the subagent tool" },
+        { value: "toggle", label: "toggle", description: "Switch the subagent tool on or off" },
+      ];
+      const matches = options.filter((option) => option.value.startsWith(prefix.trim().toLowerCase()));
       return matches.length > 0 ? matches : null;
     },
     handler: async (args, ctx) => {

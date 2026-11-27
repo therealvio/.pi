@@ -1,5 +1,8 @@
 {
   "opengrep": {
     "enabled": false
+  },
+  "widget": {
+    "visible": false
   }
 }

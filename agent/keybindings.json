@@ -1,6 +1,7 @@
 {
   "$schema": "https://pi.dev/schemas/keybindings.schema.json",
   "app.thinking.cycle": "ctrl+shift+t",
+  "ext.lens-panel.open": "ctrl+shift+e",
   "ext.snippets.expand": "ctrl+j",
   "ext.stash.swap": "alt+shift+up",
   "tui.input.newLine": [

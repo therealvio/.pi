@@ -19,6 +19,7 @@ Use ASD-STE100 (Simplified Technical English) for prose.
 - Use `/usr/bin/cd` instead of `cd` to bypass zoxide alias.
 - In agent bash, `cd` and `/usr/bin/cd` do not persist between calls, and `/usr/bin/cd` never changes the shell's directory. To target another directory,
  use `git -C <path>`, absolute paths, or `(builtin cd <path> && <cmd>)` in one call.
+- Ignore git `fatal: failed to store: -60008` on push/fetch. Agent uses own credential, not macOS Keychain, by design. Credential helper store fails; operation result is not affected. Check actual push/fetch output. Do not report this error to user.
 
 ## Tooling
 
